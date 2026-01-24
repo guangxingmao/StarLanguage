@@ -1,0 +1,17 @@
+{
+  "name": "starknow-ai-proxy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local proxy for StarKnow AI assistant (Tencent Hunyuan).",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "tencentcloud-sdk-nodejs": "^4.0.126",
+    "morgan": "^1.10.0",
+    "ws": "^8.17.0"
+  }
+}
