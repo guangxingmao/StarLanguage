@@ -1,17 +1,24 @@
 import 'dart:convert';
 import 'dart:math';
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:characters/characters.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/foundation.dart';
+
+import 'lan/lan_duel.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await ProfileStore.init();
+  await AiProxyStore.init();
   runApp(const StarKnowApp());
 }
 
@@ -194,6 +201,27 @@ class ProfileStore {
   }
 }
 
+class AiProxyStore {
+  static const _urlKey = 'ai_proxy_url';
+  static final ValueNotifier<String> url =
+      ValueNotifier<String>('http://localhost:3001');
+
+  static Future<void> init() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      url.value = prefs.getString(_urlKey) ?? url.value;
+    } catch (_) {}
+  }
+
+  static Future<void> setUrl(String value) async {
+    url.value = value;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_urlKey, value);
+    } catch (_) {}
+  }
+}
+
 const _avatarColors = [
   Color(0xFFFFD166),
   Color(0xFFBFD7FF),
@@ -234,12 +262,14 @@ class DemoData {
     required this.contents,
     required this.questions,
     required this.achievements,
+    required this.communityPosts,
   });
 
   final List<Topic> topics;
   final List<ContentItem> contents;
   final List<Question> questions;
   final List<Achievement> achievements;
+  final List<CommunityPost> communityPosts;
 
   factory DemoData.fromJson(Map<String, dynamic> json) {
     return DemoData(
@@ -254,6 +284,9 @@ class DemoData {
           .toList(),
       achievements: (json['achievements'] as List<dynamic>? ?? [])
           .map((item) => Achievement.fromJson(item as Map<String, dynamic>))
+          .toList(),
+      communityPosts: (json['communityPosts'] as List<dynamic>? ?? [])
+          .map((item) => CommunityPost.fromJson(item as Map<String, dynamic>))
           .toList(),
     );
   }
@@ -270,6 +303,7 @@ class DemoData {
       contents: const [
         ContentItem(
           id: 'c1',
+          topic: '篮球',
           title: '篮球为什么是五个人？',
           summary: '从战术分工到场地尺寸，三分钟搞懂。',
           tag: '篮球小百科',
@@ -282,6 +316,7 @@ class DemoData {
         ),
         ContentItem(
           id: 'c2',
+          topic: '历史',
           title: '唐朝有多开放？',
           summary: '从服饰、音乐到城市生活，看看大唐风。',
           tag: '历史故事',
@@ -294,6 +329,7 @@ class DemoData {
         ),
         ContentItem(
           id: 'c3',
+          topic: '科学',
           title: '为什么星星会闪烁？',
           summary: '空气折射让星光跳舞。',
           tag: '自然科学',
@@ -306,6 +342,7 @@ class DemoData {
         ),
         ContentItem(
           id: 'c4',
+          topic: '动物',
           title: '熊猫为什么爱竹子？',
           summary: '挑食还是进化选择？',
           tag: '动物观察',
@@ -324,6 +361,7 @@ class DemoData {
           options: ['A. 唐朝', 'B. 汉朝', 'C. 明朝', 'D. 清朝'],
           answer: 'A',
           topic: '历史',
+          subtopic: '朝代故事',
         ),
       ],
       achievements: const [
@@ -334,6 +372,7 @@ class DemoData {
         Achievement(id: 'a5', name: '历史小通'),
         Achievement(id: 'a6', name: '篮球达人'),
       ],
+      communityPosts: CommunityStore._seedPosts(),
     );
   }
 }
@@ -355,6 +394,7 @@ class Topic {
 class ContentItem {
   const ContentItem({
     required this.id,
+    required this.topic,
     required this.title,
     required this.summary,
     required this.tag,
@@ -367,6 +407,7 @@ class ContentItem {
   });
 
   final String id;
+  final String topic;
   final String title;
   final String summary;
   final String tag;
@@ -381,6 +422,7 @@ class ContentItem {
     final accentHex = json['accent'] as String? ?? '#FFC857';
     return ContentItem(
       id: json['id'] as String? ?? '',
+      topic: json['topic'] as String? ?? '历史',
       title: json['title'] as String? ?? '',
       summary: json['summary'] as String? ?? '',
       tag: json['tag'] as String? ?? '',
@@ -401,6 +443,7 @@ class Question {
     required this.options,
     required this.answer,
     required this.topic,
+    required this.subtopic,
   });
 
   final String id;
@@ -408,6 +451,7 @@ class Question {
   final List<String> options;
   final String answer;
   final String topic;
+  final String subtopic;
 
   factory Question.fromJson(Map<String, dynamic> json) {
     return Question(
@@ -416,6 +460,7 @@ class Question {
       options: (json['options'] as List<dynamic>? ?? []).map((e) => e.toString()).toList(),
       answer: json['answer'] as String? ?? '',
       topic: json['topic'] as String? ?? '全部',
+      subtopic: json['subtopic'] as String? ?? '综合知识',
     );
   }
 }
@@ -692,11 +737,12 @@ class _LearningPageState extends State<LearningPage> {
           item.title.contains(q) ||
           item.summary.contains(q) ||
           item.tag.contains(q) ||
+          item.topic.contains(q) ||
           item.source.contains(q);
       final matchesType = _typeFilter == '全部' || item.type == _typeFilter;
       final matchesSource = _sourceFilter == '全部' || item.source == _sourceFilter;
       final activeTopics = _topicFilters.contains('全部') ? <String>{} : _topicFilters;
-      final matchesTopic = activeTopics.isEmpty || activeTopics.any((t) => item.tag.contains(t));
+      final matchesTopic = activeTopics.isEmpty || activeTopics.contains(item.topic);
       return matchesQuery && matchesType && matchesSource && matchesTopic;
     }).toList();
   }
@@ -717,7 +763,7 @@ class _LearningPageState extends State<LearningPage> {
               ];
               final tags = [
                 '全部',
-                ...{...data.contents.map((c) => c.tag.split(' ').first)}
+                ...data.topics.map((t) => t.name)
               ];
               final filtered = _filterContents(data.contents);
               return ListView(
@@ -774,54 +820,90 @@ class CommunityPage extends StatelessWidget {
       children: [
         const StarryBackground(),
         SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
-            children: [
-              Row(
+          child: ValueListenableBuilder<List<CommunityPost>>(
+            valueListenable: CommunityStore.posts,
+            builder: (context, posts, _) {
+              if (posts.isEmpty && data.communityPosts.isNotEmpty) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  CommunityStore.seedFromData(data.communityPosts);
+                });
+              }
+              final hotPosts = posts.take(6).toList();
+              return ListView(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
                 children: [
-                  Text('兴趣社群', style: Theme.of(context).textTheme.headlineLarge),
-                  const Spacer(),
-                  GestureDetector(
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('加入新社群功能开发中')),
+                  Row(
+                    children: [
+                      Text('兴趣社群', style: Theme.of(context).textTheme.headlineLarge),
+                      const Spacer(),
+                      GestureDetector(
+                        onTap: () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('加入新社群功能开发中')),
+                          );
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFE9E0C9)),
+                          ),
+                          child: const Icon(Icons.add_rounded, color: Color(0xFFFF9F1C)),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('和同好一起探索'),
+                  const SizedBox(height: 18),
+                  CommunityComposer(
+                    onCompose: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => TopicEditorPage(
+                            circles: data.topics.map((t) => t.name).toList(),
+                          ),
+                        ),
                       );
                     },
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: const Color(0xFFE9E0C9)),
-                      ),
-                      child: const Icon(Icons.add_rounded, color: Color(0xFFFF9F1C)),
+                  ),
+                  const SizedBox(height: 18),
+                  Text('已加入', style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: data.topics.take(4).map((topic) {
+                      return GestureDetector(
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => CircleHomePage(circle: topic.name),
+                            ),
+                          );
+                        },
+                        child: TopicChip(label: '${topic.name}圈'),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 18),
+                  Text('今日热门话题', style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 12),
+                  Reveal(
+                    delay: 140,
+                    child: CommunityMasonry(
+                      posts: hotPosts,
+                      onTap: (post) {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => TopicDetailPage(post: post)),
+                        );
+                      },
                     ),
                   ),
                 ],
-              ),
-              const SizedBox(height: 8),
-              const Text('和同好一起探索'),
-              const SizedBox(height: 18),
-              const CommunityComposer(),
-              const SizedBox(height: 18),
-              Text('已加入', style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: data.topics
-                    .take(4)
-                    .map((topic) => TopicChip(label: '${topic.name}圈'))
-                    .toList(),
-              ),
-              const SizedBox(height: 18),
-              Text('今日热门话题', style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 12),
-              const Reveal(
-                delay: 140,
-                child: CommunityMasonry(),
-              ),
-            ],
+              );
+            },
           ),
         ),
       ],
@@ -829,8 +911,147 @@ class CommunityPage extends StatelessWidget {
   }
 }
 
-class AssistantPage extends StatelessWidget {
+class AssistantPage extends StatefulWidget {
   const AssistantPage({super.key});
+
+  @override
+  State<AssistantPage> createState() => _AssistantPageState();
+}
+
+class _AssistantPageState extends State<AssistantPage> {
+  final TextEditingController _composerController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  final List<_ChatMessage> _messages = [
+    const _ChatMessage(isUser: false, text: '你好！我可以识图和回答问题～'),
+  ];
+  bool _sending = false;
+
+  @override
+  void dispose() {
+    _composerController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _scrollToBottom() async {
+    await Future.delayed(const Duration(milliseconds: 60));
+    if (!_scrollController.hasClients) return;
+    _scrollController.animateTo(
+      _scrollController.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
+  }
+
+  Future<void> _sendText() async {
+    final text = _composerController.text.trim();
+    if (text.isEmpty || _sending) return;
+    setState(() {
+      _sending = true;
+      _messages.add(_ChatMessage(isUser: true, text: text));
+      _messages.add(const _ChatMessage(isUser: false, text: '思考中…', isPending: true));
+    });
+    _composerController.clear();
+    await _scrollToBottom();
+
+    final reply = await AiProxyClient.request(
+      baseUrl: AiProxyStore.url.value,
+      history: _messages,
+    );
+    setState(() {
+      _sending = false;
+      _replacePending(reply ?? '暂时无法连接代理，请检查地址或稍后再试。');
+    });
+    await _scrollToBottom();
+  }
+
+  void _replacePending(String text) {
+    final idx = _messages.lastIndexWhere((m) => m.isPending);
+    if (idx == -1) {
+      _messages.add(_ChatMessage(isUser: false, text: text));
+      return;
+    }
+    _messages[idx] = _ChatMessage(isUser: false, text: text);
+  }
+
+  Future<void> _sendImage() async {
+    final picker = ImagePicker();
+    final file = await picker.pickImage(source: ImageSource.gallery);
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
+    final mime = file.mimeType ?? 'image/jpeg';
+    setState(() {
+      _sending = true;
+      _messages.add(_ChatMessage(
+        isUser: true,
+        imageLabel: '上传了一张图片',
+        imageBytes: bytes,
+        imageMime: mime,
+      ));
+      _messages.add(const _ChatMessage(isUser: false, text: '识别中…', isPending: true));
+    });
+    await _scrollToBottom();
+    final reply = await AiProxyClient.requestImage(
+      baseUrl: AiProxyStore.url.value,
+      imageBytes: bytes,
+      imageMime: mime,
+      question: '请描述图片内容，并用儿童易懂的方式解释。',
+    );
+    setState(() {
+      _sending = false;
+      _replacePending(reply ?? '暂时无法识别图片，请检查代理或稍后再试。');
+    });
+    await _scrollToBottom();
+  }
+
+  void _openProxySettings() {
+    final controller = TextEditingController(text: AiProxyStore.url.value);
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('AI 代理设置', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: controller,
+                  decoration: InputDecoration(
+                    hintText: 'http://localhost:3001',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text('提示：本机运行可用 localhost，手机请填写电脑 IP。'),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      AiProxyStore.setUrl(controller.text.trim());
+                      Navigator.of(context).pop();
+                    },
+                    child: const Text('保存'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -846,28 +1067,47 @@ class AssistantPage extends StatelessWidget {
                   children: [
                     Text('AI 助手', style: Theme.of(context).textTheme.headlineLarge),
                     const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: const Color(0xFFFFD166)),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.history_rounded, size: 16, color: Color(0xFFFF9F1C)),
-                          SizedBox(width: 6),
-                          Text('历史记录'),
-                        ],
-                      ),
+                    ValueListenableBuilder<String>(
+                      valueListenable: AiProxyStore.url,
+                      builder: (context, value, _) {
+                        return GestureDetector(
+                          onTap: _openProxySettings,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: const Color(0xFFFFD166)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.settings_rounded, size: 16, color: Color(0xFFFF9F1C)),
+                                const SizedBox(width: 6),
+                                Text(
+                                  value.replaceAll('http://', '').replaceAll('https://', ''),
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
               ),
-              const Expanded(
-                child: ChatHistory(),
+              Expanded(
+                child: ChatHistory(
+                  messages: _messages,
+                  controller: _scrollController,
+                ),
               ),
-              const ChatComposer(),
+              ChatComposer(
+                controller: _composerController,
+                onSend: _sendText,
+                onPickImage: _sendImage,
+                sending: _sending,
+              ),
             ],
           ),
         ),
@@ -883,8 +1123,128 @@ class ArenaPage extends StatefulWidget {
   State<ArenaPage> createState() => _ArenaPageState();
 }
 
+class ArenaStats {
+  const ArenaStats({
+    required this.totalScore,
+    required this.totalCorrect,
+    required this.matches,
+    required this.maxStreak,
+    required this.bestAccuracy,
+    required this.topicBest,
+  });
+
+  final int totalScore;
+  final int totalCorrect;
+  final int matches;
+  final int maxStreak;
+  final double bestAccuracy;
+  final Map<String, int> topicBest;
+
+  static ArenaStats initial() {
+    return const ArenaStats(
+      totalScore: 0,
+      totalCorrect: 0,
+      matches: 0,
+      maxStreak: 0,
+      bestAccuracy: 0,
+      topicBest: {},
+    );
+  }
+
+  ArenaStats copyWith({
+    int? totalScore,
+    int? totalCorrect,
+    int? matches,
+    int? maxStreak,
+    double? bestAccuracy,
+    Map<String, int>? topicBest,
+  }) {
+    return ArenaStats(
+      totalScore: totalScore ?? this.totalScore,
+      totalCorrect: totalCorrect ?? this.totalCorrect,
+      matches: matches ?? this.matches,
+      maxStreak: maxStreak ?? this.maxStreak,
+      bestAccuracy: bestAccuracy ?? this.bestAccuracy,
+      topicBest: topicBest ?? this.topicBest,
+    );
+  }
+}
+
+class ArenaStatsStore {
+  static final ValueNotifier<ArenaStats> stats = ValueNotifier<ArenaStats>(ArenaStats.initial());
+  static final ValueNotifier<Set<String>> unlocked =
+      ValueNotifier<Set<String>>(<String>{});
+  static List<String> _newlyUnlocked = [];
+
+  static void submit({
+    required int score,
+    required int correct,
+    required String topic,
+    required int maxStreak,
+    required double accuracy,
+  }) {
+    final current = stats.value;
+    final best = Map<String, int>.from(current.topicBest);
+    if (topic != '全部') {
+      final prev = best[topic] ?? 0;
+      if (score > prev) {
+        best[topic] = score;
+      }
+    }
+    final bestAccuracy = accuracy > current.bestAccuracy ? accuracy : current.bestAccuracy;
+    final bestStreak = maxStreak > current.maxStreak ? maxStreak : current.maxStreak;
+    final next = current.copyWith(
+      totalScore: current.totalScore + score,
+      totalCorrect: current.totalCorrect + correct,
+      matches: current.matches + 1,
+      maxStreak: bestStreak,
+      bestAccuracy: bestAccuracy,
+      topicBest: best,
+    );
+    stats.value = next;
+    _newlyUnlocked = _evaluateNewBadges(next);
+    if (_newlyUnlocked.isNotEmpty) {
+      unlocked.value = {...unlocked.value, ..._newlyUnlocked};
+    }
+  }
+
+  static List<String> consumeNewBadges() {
+    final list = List<String>.from(_newlyUnlocked);
+    _newlyUnlocked = [];
+    return list;
+  }
+
+  static List<String> _evaluateNewBadges(ArenaStats stats) {
+    final candidates = <String>[];
+    if (stats.matches >= 1) candidates.add('闪亮新星');
+    if (stats.maxStreak >= 3) candidates.add('连胜三场');
+    if (stats.totalScore >= 300) candidates.add('探索家');
+    if (stats.bestAccuracy >= 0.9) candidates.add('观察大师');
+    if ((stats.topicBest['历史'] ?? 0) >= 120) candidates.add('历史小通');
+    if ((stats.topicBest['篮球'] ?? 0) >= 120) candidates.add('篮球达人');
+    final newOnes = candidates.where((name) => !unlocked.value.contains(name)).toList();
+    return newOnes;
+  }
+}
+
 class _ArenaPageState extends State<ArenaPage> {
   String _selectedTopic = '全部';
+  String _selectedSubtopic = '全部';
+
+  List<LeaderboardEntry> _buildPersonalLeaderboard(int yourScore) {
+    final entries = [
+      LeaderboardEntry(rank: 0, name: '你', score: yourScore),
+      const LeaderboardEntry(rank: 0, name: '小星星', score: 1740),
+      const LeaderboardEntry(rank: 0, name: '光速答题王', score: 1695),
+      const LeaderboardEntry(rank: 0, name: '跃迁少年', score: 1580),
+      const LeaderboardEntry(rank: 0, name: '知识火箭', score: 1470),
+    ];
+    entries.sort((a, b) => b.score.compareTo(a.score));
+    for (var i = 0; i < entries.length; i++) {
+      entries[i] = entries[i].copyWith(rank: i + 1);
+    }
+    return entries.take(5).toList();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -897,93 +1257,464 @@ class _ArenaPageState extends State<ArenaPage> {
             builder: (context, snapshot) {
               final data = snapshot.data ?? DemoData.fallback();
               final topics = ['全部', ...data.topics.map((t) => t.name)];
-              return ListView(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
-                children: [
-                  Text('知识擂台', style: Theme.of(context).textTheme.headlineLarge),
-                  const SizedBox(height: 8),
-                  const Text('快问快答，看谁最闪'),
-                  const SizedBox(height: 14),
-                  SizedBox(
-                    height: 44,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      children: topics.map((topic) {
-                        final active = topic == _selectedTopic;
-                        return GestureDetector(
-                          onTap: () => setState(() => _selectedTopic = topic),
-                          child: Container(
-                            margin: const EdgeInsets.only(right: 10),
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: active ? const Color(0xFFFFF2CC) : Colors.white,
-                              borderRadius: BorderRadius.circular(18),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.06),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 4),
+              final subTopics = _subTopicsFor(data, _selectedTopic);
+              return ValueListenableBuilder<ArenaStats>(
+                valueListenable: ArenaStatsStore.stats,
+                builder: (context, stats, _) {
+                  return ListView(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
+                    children: [
+                      Text('知识擂台', style: Theme.of(context).textTheme.headlineLarge),
+                      const SizedBox(height: 8),
+                      const Text('快问快答，看谁最闪'),
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        height: 44,
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          children: topics.map((topic) {
+                            final active = topic == _selectedTopic;
+                            return GestureDetector(
+                              onTap: () => setState(() {
+                                _selectedTopic = topic;
+                                _selectedSubtopic = '全部';
+                              }),
+                              child: Container(
+                                margin: const EdgeInsets.only(right: 10),
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: active ? const Color(0xFFFFF2CC) : Colors.white,
+                                  borderRadius: BorderRadius.circular(18),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.06),
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
-                            child: Text(topic, style: const TextStyle(fontWeight: FontWeight.w600)),
+                                child: Text(topic, style: const TextStyle(fontWeight: FontWeight.w600)),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                      if (_selectedTopic != '全部') ...[
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          height: 38,
+                          child: ListView(
+                            scrollDirection: Axis.horizontal,
+                            children: subTopics.map((sub) {
+                              final active = sub == _selectedSubtopic;
+                              return GestureDetector(
+                                onTap: () => setState(() => _selectedSubtopic = sub),
+                                child: Container(
+                                  margin: const EdgeInsets.only(right: 8),
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: active ? const Color(0xFFFFF2CC) : Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: const Color(0xFFE9E0C9)),
+                                  ),
+                                  child: Text(sub, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                                ),
+                              );
+                            }).toList(),
                           ),
-                        );
-                      }).toList(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Reveal(
-                    delay: 0,
-                    child: ArenaHero(
-                      onStart: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => QuizPage(topic: _selectedTopic),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Text('排行榜', style: Theme.of(context).textTheme.titleLarge),
-                  const SizedBox(height: 12),
-                  const Reveal(
-                    delay: 140,
-                    child: LeaderboardCard(
-                      title: '在线 PK 排行',
-                      entries: [
-                        LeaderboardEntry(rank: 1, name: '星知战神', score: '2350'),
-                        LeaderboardEntry(rank: 2, name: '小小挑战王', score: '2190'),
-                        LeaderboardEntry(rank: 3, name: '知识飞船', score: '2045'),
+                        ),
                       ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  const Reveal(
-                    delay: 220,
-                    child: LeaderboardCard(
-                      title: '个人积分排行',
-                      entries: [
-                        LeaderboardEntry(rank: 1, name: '你', score: '1860'),
-                        LeaderboardEntry(rank: 2, name: '小星星', score: '1740'),
-                        LeaderboardEntry(rank: 3, name: '光速答题王', score: '1695'),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  Text('分区榜', style: Theme.of(context).textTheme.titleLarge),
-                  const SizedBox(height: 12),
-                  const Reveal(
-                    delay: 300,
-                    child: ZoneLeaderboardRow(),
-                  ),
-                ],
+                      const SizedBox(height: 12),
+                      Reveal(
+                        delay: 0,
+                        child: ArenaHero(
+                          onStart: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => QuizPage(
+                                  topic: _selectedTopic,
+                                  subtopic: _selectedSubtopic,
+                                  data: data,
+                                ),
+                              ),
+                            );
+                          },
+                          onDuel: () {
+                            _openLanDuelSheet(context, data);
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Text('排行榜', style: Theme.of(context).textTheme.titleLarge),
+                      const SizedBox(height: 12),
+                      const Reveal(
+                        delay: 140,
+                        child: LeaderboardCard(
+                          title: '在线 PK 排行',
+                          entries: [
+                            LeaderboardEntry(rank: 1, name: '星知战神', score: 2350),
+                            LeaderboardEntry(rank: 2, name: '小小挑战王', score: 2190),
+                            LeaderboardEntry(rank: 3, name: '知识飞船', score: 2045),
+                            LeaderboardEntry(rank: 4, name: '星际飞手', score: 1980),
+                            LeaderboardEntry(rank: 5, name: '闪电回答', score: 1920),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Reveal(
+                        delay: 220,
+                        child: LeaderboardCard(
+                          title: '个人积分排行',
+                          entries: _buildPersonalLeaderboard(stats.totalScore),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Text('分区榜', style: Theme.of(context).textTheme.titleLarge),
+                      const SizedBox(height: 12),
+                      Reveal(
+                        delay: 300,
+                        child: ZoneLeaderboardRow(
+                          topics: data.topics.map((t) => t.name).toList(),
+                          stats: stats,
+                        ),
+                      ),
+                    ],
+                  );
+                },
               );
             },
           ),
         ),
       ],
+    );
+  }
+
+  void _openLanDuelSheet(BuildContext context, DemoData data) {
+    if (kIsWeb) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Web 暂不支持局域网对战')),
+      );
+      return;
+    }
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _LanDuelSheet(
+        topic: _selectedTopic,
+        subtopic: _selectedSubtopic,
+        data: data,
+      ),
+    );
+  }
+}
+
+class _LanDuelSheet extends StatefulWidget {
+  const _LanDuelSheet({
+    required this.topic,
+    required this.subtopic,
+    required this.data,
+  });
+
+  final String topic;
+  final String subtopic;
+  final DemoData data;
+
+  @override
+  State<_LanDuelSheet> createState() => _LanDuelSheetState();
+}
+
+class _LanDuelSheetState extends State<_LanDuelSheet> {
+  final TextEditingController _ipController = TextEditingController();
+  final TextEditingController _relayController = TextEditingController(text: 'http://localhost:3001');
+  final TextEditingController _roomController = TextEditingController();
+  LanDuelHost? _host;
+  DuelConnection? _connection;
+  String _status = '请选择创建或加入';
+  int? _port;
+  bool _hosting = false;
+  bool _joining = false;
+  bool _useRelay = false;
+  String? _roomId;
+  List<String> _localIps = const [];
+
+  @override
+  void dispose() {
+    _ipController.dispose();
+    _relayController.dispose();
+    _roomController.dispose();
+    _host?.close();
+    _connection?.close();
+    super.dispose();
+  }
+
+  Future<void> _startHost() async {
+    setState(() {
+      _hosting = true;
+      _status = '正在创建房间…';
+    });
+    try {
+      if (_useRelay) {
+        final room = _roomController.text.trim().isEmpty
+            ? _generateRoomCode()
+            : _roomController.text.trim();
+        _roomId = room;
+        final client = RelayDuelClient();
+        final conn = await client.connect(_relayController.text.trim());
+        _connection = conn;
+        conn.send({'type': 'host', 'room': room});
+        setState(() => _status = '中继房间已创建，等待加入… 房间号：$room');
+        final join = await conn.messages.firstWhere((msg) => msg['type'] == 'join');
+        if (!mounted) return;
+        final accept = await _confirmJoin(join['name']?.toString() ?? '对手');
+        if (!accept) {
+          _send(conn, {'type': 'deny'});
+          conn.close();
+          setState(() => _status = '已拒绝对战请求');
+          return;
+        }
+        _send(conn, {'type': 'accept'});
+        _startNetworkDuel(conn);
+      } else {
+        _host = LanDuelHost();
+        _port = await _host!.start();
+        _localIps = await _host!.localIps();
+        setState(() {
+          _status = '等待对方连接…';
+        });
+        final conn = await _host!.waitForClient();
+        _connection = conn;
+        final remote = conn.messages.firstWhere((msg) => msg['type'] == 'join');
+        final join = await remote;
+        if (!mounted) return;
+        final accept = await _confirmJoin(join['name']?.toString() ?? '对手');
+        if (!accept) {
+          _send(conn, {'type': 'deny'});
+          conn.close();
+          setState(() => _status = '已拒绝对战请求');
+          return;
+        }
+        _send(conn, {'type': 'accept'});
+        _startNetworkDuel(conn);
+      }
+    } catch (e) {
+      setState(() => _status = '创建失败：$e');
+    }
+  }
+
+  Future<void> _joinHost() async {
+    final ip = _ipController.text.trim();
+    final room = _roomController.text.trim();
+    if (_useRelay) {
+      if (_relayController.text.trim().isEmpty || room.isEmpty) return;
+    } else {
+      if (ip.isEmpty) return;
+    }
+    setState(() {
+      _joining = true;
+      _status = '正在连接…';
+    });
+    try {
+      final DuelConnection conn;
+      if (_useRelay) {
+        final client = RelayDuelClient();
+        conn = await client.connect(_relayController.text.trim());
+        _roomId = room;
+        conn.send({'type': 'join', 'name': '星知玩家', 'room': room});
+      } else {
+        final client = LanDuelClient();
+        conn = await client.connect(ip);
+        conn.send({'type': 'join', 'name': '星知玩家'});
+      }
+      _connection = conn;
+      setState(() => _status = '等待对方确认…');
+      await for (final msg in conn.messages) {
+        if (msg['type'] == 'accept') {
+          setState(() => _status = '已通过，等待开始…');
+        }
+        if (msg['type'] == 'room_not_found') {
+          setState(() => _status = '房间不存在');
+          break;
+        }
+        if (msg['type'] == 'start') {
+          if (!mounted) return;
+          _startJoinDuel(conn, msg);
+          break;
+        }
+        if (msg['type'] == 'deny') {
+          if (!mounted) return;
+          setState(() => _status = '对方拒绝了对战');
+          break;
+        }
+      }
+    } catch (e) {
+      setState(() => _status = '连接失败：$e');
+    }
+  }
+
+  Future<bool> _confirmJoin(String name) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('对战邀请'),
+          content: Text('来自 $name 的对战请求，是否接受？'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('拒绝')),
+            ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('接受')),
+          ],
+        );
+      },
+    );
+    return result ?? false;
+  }
+
+  void _startNetworkDuel(DuelConnection connection) {
+    final seed = DateTime.now().millisecondsSinceEpoch % 1000000;
+    final count = 10;
+    _send(connection, {
+      'type': 'start',
+      'topic': widget.topic,
+      'subtopic': widget.subtopic,
+      'seed': seed,
+      'count': count,
+    });
+    Navigator.of(context).pop();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => LanDuelPage(
+          connection: connection,
+          data: widget.data,
+          topic: widget.topic,
+          subtopic: widget.subtopic,
+          seed: seed,
+          count: count,
+          isHost: true,
+          room: _roomId,
+        ),
+      ),
+    );
+  }
+
+  void _startJoinDuel(DuelConnection connection, Map<String, dynamic> msg) {
+    final topic = msg['topic']?.toString() ?? widget.topic;
+    final subtopic = msg['subtopic']?.toString() ?? widget.subtopic;
+    final seed = (msg['seed'] as num?)?.toInt() ?? 0;
+    final count = (msg['count'] as num?)?.toInt() ?? 10;
+    Navigator.of(context).pop();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => LanDuelPage(
+          connection: connection,
+          data: widget.data,
+          topic: topic,
+          subtopic: subtopic,
+          seed: seed,
+          count: count,
+          isHost: false,
+          room: _roomId,
+        ),
+      ),
+    );
+  }
+
+  void _send(DuelConnection connection, Map<String, dynamic> data) {
+    if (_roomId != null) {
+      data = {...data, 'room': _roomId};
+    }
+    connection.send(data);
+  }
+
+  String _generateRoomCode() {
+    final rng = Random();
+    return (rng.nextInt(9000) + 1000).toString();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ips = _localIps;
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('局域网对战', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+            const SizedBox(height: 12),
+            Text('当前主题：${widget.topic} · ${widget.subtopic}'),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Text('使用中继服务'),
+                const Spacer(),
+                Switch(
+                  value: _useRelay,
+                  onChanged: (value) => setState(() => _useRelay = value),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _hosting ? null : _startHost,
+                    child: const Text('创建房间'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _joining ? null : _joinHost,
+                    child: const Text('加入房间'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (_useRelay) ...[
+              TextField(
+                controller: _relayController,
+                decoration: InputDecoration(
+                  hintText: '中继地址（如 http://192.168.1.10:3001）',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _roomController,
+                decoration: InputDecoration(
+                  hintText: '房间号（由房主提供）',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              const SizedBox(height: 8),
+              if (_roomId != null) Text('房间号：$_roomId'),
+            ] else ...[
+              TextField(
+                controller: _ipController,
+                decoration: InputDecoration(
+                  hintText: '输入对方 IP（如 192.168.1.8）',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
+            const SizedBox(height: 10),
+            if (_port != null) Text('端口：$_port'),
+            if (ips.isNotEmpty) Text('本机 IP：${ips.join(' / ')}'),
+            const SizedBox(height: 10),
+            Text(_status, style: const TextStyle(color: Color(0xFF6F6B60))),
+            const SizedBox(height: 8),
+            const Text('提示：双方需在同一 Wi‑Fi 下。'),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1613,27 +2344,7 @@ class ContentCard extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  if (item.imageUrl.isNotEmpty)
-                    Image.network(
-                      item.imageUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stack) => Container(
-                        color: item.accent.withOpacity(0.3),
-                      ),
-                    )
-                  else
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            item.accent.withOpacity(0.2),
-                            item.accent.withOpacity(0.5),
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                      ),
-                    ),
+                  Positioned.fill(child: LearningIllustration(item: item)),
                   if (item.type == 'video')
                     Center(
                       child: Container(
@@ -1703,34 +2414,108 @@ class ContentCard extends StatelessWidget {
   }
 }
 
-class ChatHistory extends StatelessWidget {
-  const ChatHistory({super.key});
+class LearningIllustration extends StatelessWidget {
+  const LearningIllustration({super.key, required this.item});
+
+  final ContentItem item;
 
   @override
   Widget build(BuildContext context) {
-    final messages = const [
-      _ChatMessage(
-        isUser: false,
-        text: '你好！我可以识图和回答问题～',
-      ),
-      _ChatMessage(
-        isUser: true,
-        text: '为什么天空是蓝色的？',
-      ),
-      _ChatMessage(
-        isUser: false,
-        text: '因为太阳光通过大气时，蓝光更容易散射，所以我们看到蓝色。',
-      ),
-      _ChatMessage(
-        isUser: true,
-        imageLabel: '上传了一张图片',
-      ),
-      _ChatMessage(
-        isUser: false,
-        text: '识别结果：向日葵。向日葵会朝着阳光转动哦～',
-      ),
-    ];
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (item.imageUrl.startsWith('assets/') && item.imageUrl.endsWith('.svg'))
+          SvgPicture.asset(
+            item.imageUrl,
+            fit: BoxFit.cover,
+            placeholderBuilder: (_) => Container(color: item.accent.withOpacity(0.3)),
+          )
+        else if (item.imageUrl.startsWith('assets/'))
+          Image.asset(
+            item.imageUrl,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stack) => Container(
+              color: item.accent.withOpacity(0.3),
+            ),
+          )
+        else if (item.imageUrl.isNotEmpty)
+          Image.network(
+            item.imageUrl,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stack) => Container(
+              color: item.accent.withOpacity(0.3),
+            ),
+          )
+        else
+          Container(color: item.accent.withOpacity(0.3)),
+        Positioned(
+          left: 12,
+          bottom: 8,
+          child: _DecorStar(color: Colors.white.withOpacity(0.6), size: 18),
+        ),
+        Align(
+          alignment: Alignment.bottomLeft,
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 160),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.88),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                item.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DecorCircle extends StatelessWidget {
+  const _DecorCircle({required this.color, required this.size});
+
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    );
+  }
+}
+
+class _DecorStar extends StatelessWidget {
+  const _DecorStar({required this.color, required this.size});
+
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Icon(Icons.star_rounded, color: color, size: size);
+  }
+}
+
+class ChatHistory extends StatelessWidget {
+  const ChatHistory({super.key, required this.messages, required this.controller});
+
+  final List<_ChatMessage> messages;
+  final ScrollController controller;
+
+  @override
+  Widget build(BuildContext context) {
     return ListView.builder(
+      controller: controller,
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
       itemCount: messages.length,
       itemBuilder: (context, index) {
@@ -1741,11 +2526,21 @@ class ChatHistory extends StatelessWidget {
 }
 
 class _ChatMessage {
-  const _ChatMessage({required this.isUser, this.text, this.imageLabel});
+  const _ChatMessage({
+    required this.isUser,
+    this.text,
+    this.imageLabel,
+    this.imageBytes,
+    this.imageMime,
+    this.isPending = false,
+  });
 
   final bool isUser;
   final String? text;
   final String? imageLabel;
+  final Uint8List? imageBytes;
+  final String? imageMime;
+  final bool isPending;
 }
 
 class ChatBubble extends StatelessWidget {
@@ -1780,31 +2575,56 @@ class ChatBubble extends StatelessWidget {
             ),
           ],
         ),
-        child: message.imageLabel != null
+        child: message.imageBytes != null
             ? Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFBFD7FF),
-                      borderRadius: BorderRadius.circular(12),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.memory(
+                      message.imageBytes!,
+                      width: 56,
+                      height: 56,
+                      fit: BoxFit.cover,
                     ),
-                    child: const Icon(Icons.image_rounded, color: Colors.white),
                   ),
                   const SizedBox(width: 10),
-                  Text(message.imageLabel!),
+                  Text(message.imageLabel ?? '图片'),
                 ],
               )
-            : Text(message.text ?? ''),
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(child: Text(message.text ?? '')),
+                  if (message.isPending)
+                    const Padding(
+                      padding: EdgeInsets.only(left: 8),
+                      child: SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                ],
+              ),
       ),
     );
   }
 }
 
 class ChatComposer extends StatelessWidget {
-  const ChatComposer({super.key});
+  const ChatComposer({
+    super.key,
+    required this.controller,
+    required this.onSend,
+    required this.onPickImage,
+    required this.sending,
+  });
+
+  final TextEditingController controller;
+  final VoidCallback onSend;
+  final VoidCallback onPickImage;
+  final bool sending;
 
   @override
   Widget build(BuildContext context) {
@@ -1823,32 +2643,130 @@ class ChatComposer extends StatelessWidget {
       child: Row(
         children: [
           IconButton(
-            onPressed: () {},
+            onPressed: onPickImage,
             icon: const Icon(Icons.image_rounded),
             color: const Color(0xFFFF9F1C),
           ),
           Expanded(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF8E6),
-                borderRadius: BorderRadius.circular(16),
+            child: TextField(
+              controller: controller,
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) => onSend(),
+              decoration: InputDecoration(
+                hintText: '输入问题或发送图片…',
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                filled: true,
+                fillColor: const Color(0xFFFFF8E6),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
               ),
-              child: const Text('输入问题或发送图片…'),
             ),
           ),
           const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFF9F1C),
-              borderRadius: BorderRadius.circular(14),
+          GestureDetector(
+            onTap: sending ? null : onSend,
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: sending ? const Color(0xFFFFD166) : const Color(0xFFFF9F1C),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(Icons.send_rounded, color: Colors.white),
             ),
-            child: const Icon(Icons.send_rounded, color: Colors.white),
           ),
         ],
       ),
     );
+  }
+}
+
+class AiProxyClient {
+  static Future<String?> request({
+    required String baseUrl,
+    required List<_ChatMessage> history,
+  }) async {
+    final uri = Uri.parse(_normalizeBaseUrl(baseUrl));
+    final endpoint = uri.replace(path: '/chat');
+    final messages = _buildMessages(history);
+    if (messages.isEmpty) return null;
+    try {
+      final response = await http.post(
+        endpoint,
+        headers: const {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'model': 'hunyuan-turbos-latest',
+          'messages': messages,
+          'temperature': 0.6,
+          'topP': 1.0,
+          'stream': false,
+        }),
+      );
+      if (response.statusCode != 200) {
+        return null;
+      }
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      return data['reply'] as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static String _normalizeBaseUrl(String url) {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return 'http://localhost:3001';
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+    return 'http://$trimmed';
+  }
+
+  static List<Map<String, String>> _buildMessages(List<_ChatMessage> history) {
+    final items = <Map<String, String>>[
+      {
+        'role': 'system',
+        'content': '你是面向儿童的科普助手，回答要简短、温和、易懂。',
+      }
+    ];
+    for (final msg in history.reversed.take(12).toList().reversed) {
+      if (msg.text == null || msg.text!.trim().isEmpty) continue;
+      if (msg.isPending) continue;
+      items.add({
+        'role': msg.isUser ? 'user' : 'assistant',
+        'content': msg.text!.trim(),
+      });
+    }
+    return items;
+  }
+
+  static Future<String?> requestImage({
+    required String baseUrl,
+    required Uint8List imageBytes,
+    required String imageMime,
+    required String question,
+  }) async {
+    final uri = Uri.parse(_normalizeBaseUrl(baseUrl));
+    final endpoint = uri.replace(path: '/chat');
+    try {
+      final response = await http.post(
+        endpoint,
+        headers: const {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'imageBase64': base64Encode(imageBytes),
+          'imageMime': imageMime,
+          'question': question,
+          'stream': false,
+        }),
+      );
+      if (response.statusCode != 200) {
+        return null;
+      }
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      return data['reply'] as String?;
+    } catch (_) {
+      return null;
+    }
   }
 }
 
@@ -1915,7 +2833,9 @@ class CommunityHero extends StatelessWidget {
 }
 
 class CommunityComposer extends StatelessWidget {
-  const CommunityComposer({super.key});
+  const CommunityComposer({super.key, required this.onCompose});
+
+  final VoidCallback onCompose;
 
   @override
   Widget build(BuildContext context) {
@@ -1938,11 +2858,7 @@ class CommunityComposer extends StatelessWidget {
             ),
           ),
           TextButton(
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('动态发布功能开发中')),
-              );
-            },
+            onPressed: onCompose,
             child: const Text('发布'),
           ),
         ],
@@ -1952,44 +2868,22 @@ class CommunityComposer extends StatelessWidget {
 }
 
 class CommunityMasonry extends StatelessWidget {
-  const CommunityMasonry({super.key});
+  const CommunityMasonry({super.key, required this.posts, required this.onTap});
+
+  final List<CommunityPost> posts;
+  final ValueChanged<CommunityPost> onTap;
 
   @override
   Widget build(BuildContext context) {
-    final posts = const [
-      _PostData(
-        title: '为什么猫咪爱晒太阳？',
-        summary: '一起聊聊小动物的温暖秘密。',
-        color: Color(0xFFBFD7FF),
-      ),
-      _PostData(
-        title: '你最喜欢的历史人物是谁？',
-        summary: '留言区见～',
-        color: Color(0xFFFFC857),
-      ),
-      _PostData(
-        title: '哪一刻让你爱上科学？',
-        summary: '分享一个小实验～',
-        color: Color(0xFFB8F1E0),
-      ),
-      _PostData(
-        title: '篮球招式大揭秘',
-        summary: '从三步上篮说起。',
-        color: Color(0xFF5DADE2),
-      ),
-      _PostData(
-        title: '我做了个小程序！',
-        summary: '用 Scratch 做小游戏～',
-        color: Color(0xFF9BDEAC),
-      ),
-      _PostData(
-        title: '长城到底有多长？',
-        summary: '来聊聊历史建筑。',
-        color: Color(0xFF5DADE2),
-      ),
-    ];
-    final left = posts.where((p) => posts.indexOf(p).isEven).toList();
-    final right = posts.where((p) => posts.indexOf(p).isOdd).toList();
+    final left = <CommunityPost>[];
+    final right = <CommunityPost>[];
+    for (var i = 0; i < posts.length; i++) {
+      if (i.isEven) {
+        left.add(posts[i]);
+      } else {
+        right.add(posts[i]);
+      }
+    }
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1999,7 +2893,10 @@ class CommunityMasonry extends StatelessWidget {
                 .map(
                   (post) => Padding(
                     padding: const EdgeInsets.only(bottom: 14),
-                    child: TopicPostCard(data: post),
+                    child: TopicPostCard(
+                      data: post,
+                      onTap: () => onTap(post),
+                    ),
                   ),
                 )
                 .toList(),
@@ -2012,7 +2909,10 @@ class CommunityMasonry extends StatelessWidget {
                 .map(
                   (post) => Padding(
                     padding: const EdgeInsets.only(bottom: 14),
-                    child: TopicPostCard(data: post),
+                    child: TopicPostCard(
+                      data: post,
+                      onTap: () => onTap(post),
+                    ),
                   ),
                 )
                 .toList(),
@@ -2023,40 +2923,23 @@ class CommunityMasonry extends StatelessWidget {
   }
 }
 
-class _PostData {
-  const _PostData({required this.title, required this.summary, required this.color});
-
-  final String title;
-  final String summary;
-  final Color color;
-}
-
 class TopicPostCard extends StatelessWidget {
-  const TopicPostCard({super.key, required this.data});
+  const TopicPostCard({super.key, required this.data, required this.onTap});
 
-  final _PostData data;
+  final CommunityPost data;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
       borderRadius: BorderRadius.circular(22),
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => const PublicProfilePage(
-              name: '星知小记者',
-              avatarIndex: 1,
-              bio: '喜欢动物和科学，欢迎来聊天～',
-            ),
-          ),
-        );
-      },
+      onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: data.color.withOpacity(0.6)),
+          border: Border.all(color: data.accent.withOpacity(0.6)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2065,19 +2948,19 @@ class TopicPostCard extends StatelessWidget {
               children: [
                 CircleAvatar(
                   radius: 18,
-                  backgroundColor: data.color,
+                  backgroundColor: data.accent,
                   child: const Icon(Icons.face_rounded, color: Colors.white),
                 ),
                 const SizedBox(width: 10),
-                const Expanded(
+                Expanded(
                   child: Text(
-                    '星知小记者',
+                    data.author,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 const SizedBox(width: 8),
-                const Text('2 小时前', style: TextStyle(fontSize: 11, color: Color(0xFF8A8370))),
+                Text(data.timeLabel, style: const TextStyle(fontSize: 11, color: Color(0xFF8A8370))),
               ],
             ),
             const SizedBox(height: 12),
@@ -2087,15 +2970,29 @@ class TopicPostCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(data.summary),
+            if (data.imageBase64 != null) ...[
+              const SizedBox(height: 10),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: Image.memory(
+                  base64Decode(data.imageBase64!),
+                  height: 120,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             Wrap(
               spacing: 12,
               crossAxisAlignment: WrapCrossAlignment.center,
-              children: const [
-                Icon(Icons.favorite_border_rounded, size: 18),
-                Text('128'),
-                Icon(Icons.chat_bubble_outline_rounded, size: 18),
-                Text('36'),
+              children: [
+                const Icon(Icons.local_offer_rounded, size: 18),
+                Text(data.circle),
+                const Icon(Icons.favorite_border_rounded, size: 18),
+                Text('${data.likes}'),
+                const Icon(Icons.chat_bubble_outline_rounded, size: 18),
+                Text('${data.comments}'),
               ],
             ),
             const SizedBox(height: 10),
@@ -2114,10 +3011,610 @@ class TopicPostCard extends StatelessWidget {
   }
 }
 
+class CommunityPost {
+  const CommunityPost({
+    required this.id,
+    required this.title,
+    required this.summary,
+    required this.content,
+    required this.circle,
+    required this.author,
+    required this.timeLabel,
+    required this.likes,
+    required this.comments,
+    required this.accent,
+    this.imageBase64,
+  });
+
+  final String id;
+  final String title;
+  final String summary;
+  final String content;
+  final String circle;
+  final String author;
+  final String timeLabel;
+  final int likes;
+  final int comments;
+  final Color accent;
+  final String? imageBase64;
+
+  factory CommunityPost.fromJson(Map<String, dynamic> json) {
+    return CommunityPost(
+      id: json['id'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      summary: json['summary'] as String? ?? '',
+      content: json['content'] as String? ?? '',
+      circle: json['circle'] as String? ?? '',
+      author: json['author'] as String? ?? '',
+      timeLabel: json['timeLabel'] as String? ?? '',
+      likes: (json['likes'] as num?)?.toInt() ?? 0,
+      comments: (json['comments'] as num?)?.toInt() ?? 0,
+      accent: _parseColor(json['accent'] as String? ?? '#BFD7FF'),
+      imageBase64: json['imageBase64'] as String?,
+    );
+  }
+}
+
+class CommunityComment {
+  const CommunityComment({
+    required this.author,
+    required this.content,
+    required this.timeLabel,
+  });
+
+  final String author;
+  final String content;
+  final String timeLabel;
+}
+
+class CommunityStore {
+  static final ValueNotifier<List<CommunityPost>> posts =
+      ValueNotifier<List<CommunityPost>>(_seedPosts());
+  static final ValueNotifier<Map<String, List<CommunityComment>>> comments =
+      ValueNotifier<Map<String, List<CommunityComment>>>(_seedComments());
+  static bool _seededFromData = false;
+
+  static void addPost({
+    required String title,
+    required String content,
+    required String circle,
+    String? imageBase64,
+  }) {
+    final summary = content.length > 28 ? '${content.substring(0, 28)}…' : content;
+    final accent = _accentForCircle(circle);
+    final item = CommunityPost(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      title: title,
+      summary: summary,
+      content: content,
+      circle: circle,
+      author: ProfileStore.profile.value.name,
+      timeLabel: '刚刚',
+      likes: 0,
+      comments: 0,
+      accent: accent,
+      imageBase64: imageBase64,
+    );
+    posts.value = [item, ...posts.value];
+  }
+
+  static void seedFromData(List<CommunityPost> data) {
+    if (_seededFromData) return;
+    _seededFromData = true;
+    posts.value = data;
+  }
+
+  static void addComment(String postId, String content) {
+    final list = List<CommunityComment>.from(comments.value[postId] ?? []);
+    list.insert(
+      0,
+      CommunityComment(
+        author: ProfileStore.profile.value.name,
+        content: content,
+        timeLabel: '刚刚',
+      ),
+    );
+    comments.value = {...comments.value, postId: list};
+  }
+
+  static Color _accentForCircle(String circle) {
+    switch (circle) {
+      case '历史':
+        return const Color(0xFF5DADE2);
+      case '计算机':
+        return const Color(0xFF2EC4B6);
+      case '篮球':
+        return const Color(0xFFFF9F1C);
+      case '动物':
+        return const Color(0xFF6DD3CE);
+      case '科学':
+        return const Color(0xFFB8F1E0);
+      default:
+        return const Color(0xFFBFD7FF);
+    }
+  }
+
+  static List<CommunityPost> _seedPosts() {
+    return const [
+      CommunityPost(
+        id: 'p1',
+        title: '为什么猫咪爱晒太阳？',
+        summary: '一起聊聊小动物的温暖秘密。',
+        content: '你家的猫咪喜欢晒太阳吗？一起聊聊它们为什么总爱找暖暖的地方～',
+        circle: '动物',
+        author: '星知小记者',
+        timeLabel: '2 小时前',
+        likes: 128,
+        comments: 36,
+        accent: Color(0xFFBFD7FF),
+      ),
+      CommunityPost(
+        id: 'p2',
+        title: '你最喜欢的历史人物是谁？',
+        summary: '留言区见～',
+        content: '你最喜欢的历史人物是谁？他/她有哪些故事？欢迎分享～',
+        circle: '历史',
+        author: '唐宋小能手',
+        timeLabel: '3 小时前',
+        likes: 94,
+        comments: 28,
+        accent: Color(0xFFFFC857),
+      ),
+      CommunityPost(
+        id: 'p3',
+        title: '哪一刻让你爱上科学？',
+        summary: '分享一个小实验～',
+        content: '哪一刻让你爱上科学？写下一个小实验或小发现吧！',
+        circle: '科学',
+        author: '实验室小白',
+        timeLabel: '5 小时前',
+        likes: 86,
+        comments: 19,
+        accent: Color(0xFFB8F1E0),
+      ),
+      CommunityPost(
+        id: 'p4',
+        title: '篮球招式大揭秘',
+        summary: '从三步上篮说起。',
+        content: '你最常用的篮球招式是什么？从三步上篮说起～',
+        circle: '篮球',
+        author: '三分神投',
+        timeLabel: '6 小时前',
+        likes: 73,
+        comments: 22,
+        accent: Color(0xFF5DADE2),
+      ),
+      CommunityPost(
+        id: 'p5',
+        title: '我做了个小程序！',
+        summary: '用 Scratch 做小游戏～',
+        content: '用 Scratch 做了一个小游戏，想和大家交流一下做法～',
+        circle: '计算机',
+        author: '代码星',
+        timeLabel: '昨天',
+        likes: 61,
+        comments: 12,
+        accent: Color(0xFF9BDEAC),
+      ),
+      CommunityPost(
+        id: 'p6',
+        title: '长城到底有多长？',
+        summary: '来聊聊历史建筑。',
+        content: '长城到底有多长？不同资料说法不太一样，一起查查吧～',
+        circle: '历史',
+        author: '长城小导游',
+        timeLabel: '昨天',
+        likes: 52,
+        comments: 10,
+        accent: Color(0xFF5DADE2),
+      ),
+    ];
+  }
+
+  static Map<String, List<CommunityComment>> _seedComments() {
+    return {
+      'p1': const [
+        CommunityComment(author: '小星星', content: '我家猫咪每天都要晒太阳！', timeLabel: '1 小时前'),
+        CommunityComment(author: '小小动物迷', content: '因为太阳暖暖的～', timeLabel: '45 分钟前'),
+      ],
+      'p2': const [
+        CommunityComment(author: '历史控', content: '我喜欢李白和杜甫！', timeLabel: '2 小时前'),
+      ],
+    };
+  }
+}
+
+class CircleHomePage extends StatelessWidget {
+  const CircleHomePage({super.key, required this.circle});
+
+  final String circle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Stack(
+        children: [
+          const StarryBackground(),
+          SafeArea(
+            child: ValueListenableBuilder<List<CommunityPost>>(
+              valueListenable: CommunityStore.posts,
+              builder: (context, posts, _) {
+                final circlePosts = posts.where((p) => p.circle == circle).toList();
+                return ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                  children: [
+                    Row(
+                      children: [
+                        IconButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: const Icon(Icons.arrow_back_rounded),
+                        ),
+                        const SizedBox(width: 6),
+                        Text('$circle 圈', style: Theme.of(context).textTheme.headlineLarge),
+                        const Spacer(),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => TopicEditorPage(
+                                  circles: [circle],
+                                  presetCircle: circle,
+                                ),
+                              ),
+                            );
+                          },
+                          child: const Text('发话题'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text('这里是 $circle 圈的话题讨论区'),
+                    const SizedBox(height: 16),
+                    if (circlePosts.isEmpty)
+                      const EmptyStateCard()
+                    else
+                      Column(
+                        children: circlePosts
+                            .map(
+                              (post) => Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: TopicPostCard(
+                                  data: post,
+                                  onTap: () => Navigator.of(context).push(
+                                    MaterialPageRoute(builder: (_) => TopicDetailPage(post: post)),
+                                  ),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class TopicDetailPage extends StatelessWidget {
+  const TopicDetailPage({super.key, required this.post});
+
+  final CommunityPost post;
+
+  @override
+  Widget build(BuildContext context) {
+    final TextEditingController commentController = TextEditingController();
+    return Scaffold(
+      body: Stack(
+        children: [
+          const StarryBackground(),
+          SafeArea(
+            child: ValueListenableBuilder<Map<String, List<CommunityComment>>>(
+              valueListenable: CommunityStore.comments,
+              builder: (context, commentMap, _) {
+                final list = commentMap[post.id] ?? const [];
+                return ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                  children: [
+                    Row(
+                      children: [
+                        IconButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: const Icon(Icons.arrow_back_rounded),
+                        ),
+                        const SizedBox(width: 6),
+                        Text('话题详情', style: Theme.of(context).textTheme.headlineLarge),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(color: post.accent.withOpacity(0.6)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(post.title, style: Theme.of(context).textTheme.titleLarge),
+                          const SizedBox(height: 8),
+                          Text('来自 ${post.circle} 圈 · ${post.timeLabel}'),
+                          const SizedBox(height: 12),
+                          Text(post.content),
+                          if (post.imageBase64 != null) ...[
+                            const SizedBox(height: 10),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(16),
+                              child: Image.memory(
+                                base64Decode(post.imageBase64!),
+                                height: 160,
+                                width: double.infinity,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text('评论', style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 10),
+                    if (list.isEmpty)
+                      const EmptyStateCard()
+                    else
+                      Column(
+                        children: list
+                            .map(
+                              (comment) => Container(
+                                margin: const EdgeInsets.only(bottom: 10),
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: const Color(0xFFE9E0C9)),
+                                ),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 16,
+                                      backgroundColor: post.accent.withOpacity(0.3),
+                                      child: const Icon(Icons.face_rounded, size: 18, color: Colors.white),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            comment.author,
+                                            style: const TextStyle(fontWeight: FontWeight.w700),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(comment.content),
+                                          const SizedBox(height: 4),
+                                          Text(comment.timeLabel, style: const TextStyle(fontSize: 11, color: Color(0xFF8A8370))),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFFE9E0C9)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('写评论', style: TextStyle(fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: commentController,
+                            minLines: 2,
+                            maxLines: 4,
+                            decoration: InputDecoration(
+                              hintText: '说点什么吧…',
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: ElevatedButton(
+                              onPressed: () {
+                                final text = commentController.text.trim();
+                                if (text.isEmpty) return;
+                                CommunityStore.addComment(post.id, text);
+                                commentController.clear();
+                              },
+                              child: const Text('发布评论'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        TextButton(
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(builder: (_) => CircleHomePage(circle: post.circle)),
+                            );
+                          },
+                          child: const Text('进入圈子'),
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class TopicEditorPage extends StatefulWidget {
+  const TopicEditorPage({super.key, required this.circles, this.presetCircle});
+
+  final List<String> circles;
+  final String? presetCircle;
+
+  @override
+  State<TopicEditorPage> createState() => _TopicEditorPageState();
+}
+
+class _TopicEditorPageState extends State<TopicEditorPage> {
+  final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _contentController = TextEditingController();
+  late String _circle;
+  Uint8List? _imageBytes;
+  String? _imageMime;
+
+  @override
+  void initState() {
+    super.initState();
+    _circle = widget.presetCircle ?? (widget.circles.isNotEmpty ? widget.circles.first : '其他');
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _contentController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final title = _titleController.text.trim();
+    final content = _contentController.text.trim();
+    if (title.isEmpty || content.isEmpty) return;
+    final base64Image = _imageBytes == null ? null : base64Encode(_imageBytes!);
+    CommunityStore.addPost(
+      title: title,
+      content: content,
+      circle: _circle,
+      imageBase64: base64Image,
+    );
+    Navigator.of(context).pop();
+  }
+
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final file = await picker.pickImage(source: ImageSource.gallery);
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
+    setState(() {
+      _imageBytes = bytes;
+      _imageMime = file.mimeType ?? 'image/jpeg';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Stack(
+        children: [
+          const StarryBackground(),
+          SafeArea(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+              children: [
+                Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                    const SizedBox(width: 6),
+                    Text('发布话题', style: Theme.of(context).textTheme.headlineLarge),
+                    const Spacer(),
+                    TextButton(onPressed: _submit, child: const Text('发布')),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _titleController,
+                  decoration: InputDecoration(
+                    hintText: '话题标题',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _contentController,
+                  minLines: 4,
+                  maxLines: 8,
+                  decoration: InputDecoration(
+                    hintText: '写下你的话题内容…',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _pickImage,
+                      icon: const Icon(Icons.image_rounded),
+                      label: const Text('添加图片'),
+                    ),
+                    const SizedBox(width: 12),
+                    if (_imageBytes != null)
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.memory(
+                            _imageBytes!,
+                            height: 72,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Text('选择圈子'),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: widget.circles.map((circle) {
+                    final active = _circle == circle;
+                    return ChoiceChip(
+                      label: Text(circle),
+                      selected: active,
+                      onSelected: (_) => setState(() => _circle = circle),
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class ArenaHero extends StatelessWidget {
-  const ArenaHero({super.key, required this.onStart});
+  const ArenaHero({super.key, required this.onStart, required this.onDuel});
 
   final VoidCallback onStart;
+  final VoidCallback onDuel;
 
   @override
   Widget build(BuildContext context) {
@@ -2153,7 +3650,7 @@ class ArenaHero extends StatelessWidget {
               ],
             ),
             child: const Center(
-              child: Text('60s', style: TextStyle(fontSize: 20, color: Colors.white)),
+              child: Text('12s', style: TextStyle(fontSize: 20, color: Colors.white)),
             ),
           ),
           const SizedBox(width: 16),
@@ -2163,11 +3660,24 @@ class ArenaHero extends StatelessWidget {
               children: [
                 Text('极速挑战', style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 6),
-                const Text('10 题 · 连击加分'),
+                const Text('最多 10 题 · 12s/题 · 越快越高分'),
                 const SizedBox(height: 12),
-                ElevatedButton(
-                  onPressed: onStart,
-                  child: const Text('开始对战'),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: onStart,
+                        child: const Text('单人挑战'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: onDuel,
+                        child: const Text('局域网对战'),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -2178,12 +3688,36 @@ class ArenaHero extends StatelessWidget {
   }
 }
 
+List<String> _subTopicsFor(DemoData data, String topic) {
+  if (topic == '历史') {
+    return ['全部', '朝代故事', '名人传记', '古代科技', '古迹巡礼'];
+  }
+  if (topic == '计算机') {
+    return ['全部', '编程入门', '硬件小知识', '网络世界', '人工智能'];
+  }
+  if (topic == '篮球') {
+    return ['全部', '规则基础', '技巧训练', '球星故事', '球队文化'];
+  }
+  if (topic == '动物') {
+    return ['全部', '濒危动物', '生态习性', '动物家族', '自然保护'];
+  }
+  return ['全部'];
+}
+
 class LeaderboardEntry {
   const LeaderboardEntry({required this.rank, required this.name, required this.score});
 
   final int rank;
   final String name;
-  final String score;
+  final int score;
+
+  LeaderboardEntry copyWith({int? rank, String? name, int? score}) {
+    return LeaderboardEntry(
+      rank: rank ?? this.rank,
+      name: name ?? this.name,
+      score: score ?? this.score,
+    );
+  }
 }
 
 class LeaderboardCard extends StatelessWidget {
@@ -2232,7 +3766,7 @@ class LeaderboardCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  Text(entry.score, style: const TextStyle(fontWeight: FontWeight.w700)),
+                  Text('${entry.score}', style: const TextStyle(fontWeight: FontWeight.w700)),
                 ],
               ),
             ),
@@ -2244,34 +3778,79 @@ class LeaderboardCard extends StatelessWidget {
 }
 
 class ZoneLeaderboardRow extends StatelessWidget {
-  const ZoneLeaderboardRow({super.key});
+  const ZoneLeaderboardRow({super.key, required this.topics, required this.stats});
+
+  final List<String> topics;
+  final ArenaStats stats;
 
   @override
   Widget build(BuildContext context) {
+    final entries = _buildZoneEntries();
     return Column(
-      children: const [
-        ZoneLeaderboardCard(
-          title: '篮球区榜',
-          leader: '运球大师',
-          score: '1320',
-          color: Color(0xFFFFC857),
-        ),
-        SizedBox(height: 12),
-        ZoneLeaderboardCard(
-          title: '历史区榜',
-          leader: '唐宋小能手',
-          score: '1180',
-          color: Color(0xFF5DADE2),
-        ),
-        SizedBox(height: 12),
-        ZoneLeaderboardCard(
-          title: '科学区榜',
-          leader: '宇宙探险家',
-          score: '1040',
-          color: Color(0xFFB8F1E0),
-        ),
-      ],
+      children: entries
+          .map(
+            (entry) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: ZoneLeaderboardCard(
+                title: '${entry.topic}区榜',
+                leader: entry.leader,
+                score: entry.score,
+                color: entry.color,
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => ZoneLeaderboardDetailPage(
+                        topic: entry.topic,
+                        entries: entry.detailEntries,
+                        yourBest: stats.topicBest[entry.topic] ?? 0,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          )
+          .toList(),
     );
+  }
+
+  List<_ZoneEntry> _buildZoneEntries() {
+    final palette = {
+      '历史': const Color(0xFF5DADE2),
+      '计算机': const Color(0xFF2EC4B6),
+      '篮球': const Color(0xFFFF9F1C),
+      '动物': const Color(0xFF6DD3CE),
+    };
+    return topics.take(4).map((topic) {
+      final color = palette[topic] ?? const Color(0xFFFFC857);
+      final best = stats.topicBest[topic] ?? 0;
+      final detailEntries = _buildZoneLeaderboard(topic, best);
+      return _ZoneEntry(
+        topic: topic,
+        leader: detailEntries.first.name,
+        score: detailEntries.first.score,
+        color: color,
+        detailEntries: detailEntries,
+      );
+    }).toList();
+  }
+
+  List<LeaderboardEntry> _buildZoneLeaderboard(String topic, int yourBest) {
+    final base = [
+      const LeaderboardEntry(rank: 0, name: '星河小队', score: 1820),
+      const LeaderboardEntry(rank: 0, name: '晨星', score: 1710),
+      const LeaderboardEntry(rank: 0, name: '飞快答题', score: 1640),
+      const LeaderboardEntry(rank: 0, name: '知识通关', score: 1550),
+      const LeaderboardEntry(rank: 0, name: '探索者', score: 1470),
+    ];
+    if (yourBest > 0) {
+      base.add(LeaderboardEntry(rank: 0, name: '你', score: yourBest));
+    }
+    base.sort((a, b) => b.score.compareTo(a.score));
+    for (var i = 0; i < base.length; i++) {
+      base[i] = base[i].copyWith(rank: i + 1);
+    }
+    return base.take(10).toList();
   }
 }
 
@@ -2282,97 +3861,446 @@ class ZoneLeaderboardCard extends StatelessWidget {
     required this.leader,
     required this.score,
     required this.color,
+    this.onTap,
   });
 
   final String title;
   final String leader;
-  final String score;
+  final int score;
   final Color color;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(22),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: color.withOpacity(0.6)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(Icons.emoji_events_rounded, color: Color(0xFFFF9F1C)),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 4),
+                  Text('榜首：$leader', style: const TextStyle(color: Color(0xFF6F6B60))),
+                ],
+              ),
+            ),
+            Text('$score', style: const TextStyle(fontWeight: FontWeight.w700)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ZoneEntry {
+  const _ZoneEntry({
+    required this.topic,
+    required this.leader,
+    required this.score,
+    required this.color,
+    required this.detailEntries,
+  });
+
+  final String topic;
+  final String leader;
+  final int score;
+  final Color color;
+  final List<LeaderboardEntry> detailEntries;
+}
+
+class ZoneLeaderboardDetailPage extends StatefulWidget {
+  const ZoneLeaderboardDetailPage({
+    super.key,
+    required this.topic,
+    required this.entries,
+    required this.yourBest,
+  });
+
+  final String topic;
+  final List<LeaderboardEntry> entries;
+  final int yourBest;
+
+  @override
+  State<ZoneLeaderboardDetailPage> createState() => _ZoneLeaderboardDetailPageState();
+}
+
+class _ZoneLeaderboardDetailPageState extends State<ZoneLeaderboardDetailPage> {
+  late String _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = '总榜';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final subTopics = _subTopics(widget.topic);
+    final tabs = ['总榜', ...subTopics];
+    return Scaffold(
+      body: Stack(
+        children: [
+          const StarryBackground(),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.arrow_back_rounded),
+                      ),
+                      const SizedBox(width: 4),
+                      Text('${widget.topic} 分区榜', style: Theme.of(context).textTheme.headlineMedium),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 44,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: tabs.map((label) {
+                        final active = label == _selected;
+                        return GestureDetector(
+                          onTap: () => setState(() => _selected = label),
+                          child: Container(
+                            margin: const EdgeInsets.only(right: 10),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: active ? const Color(0xFFFFF2CC) : Colors.white,
+                              borderRadius: BorderRadius.circular(18),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.06),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: ListView.separated(
+                      itemCount: _currentList().length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        final entry = _currentList()[index];
+                        return Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: const Color(0xFFFFD166)),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFFF1D0),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    '${entry.rank}',
+                                    style: const TextStyle(fontWeight: FontWeight.w700),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  entry.name,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Text('${entry.score}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<String> _subTopics(String topic) {
+    switch (topic) {
+      case '历史':
+        return ['朝代故事', '名人传记', '古代科技', '古迹巡礼'];
+      case '计算机':
+        return ['编程入门', '硬件小知识', '网络世界', '人工智能'];
+      case '篮球':
+        return ['规则基础', '技巧训练', '球星故事', '球队文化'];
+      case '动物':
+        return ['濒危动物', '生态习性', '动物家族', '自然保护'];
+      default:
+        return ['综合知识', '趣味速答'];
+    }
+  }
+
+  List<LeaderboardEntry> _buildSubTopicLeaderboard(String topic, String subTopic, int yourBest) {
+    final names = ['星海少年', '光点', '快答', '小巡航', '知识号', '跃迁号'];
+    final seed = subTopic.codeUnits.fold<int>(0, (a, b) => a + b);
+    final list = <LeaderboardEntry>[];
+    for (var i = 0; i < names.length; i++) {
+      list.add(LeaderboardEntry(rank: 0, name: names[i], score: 1400 + (seed + i * 97) % 420));
+    }
+    if (yourBest > 0) {
+      list.add(LeaderboardEntry(rank: 0, name: '你', score: yourBest));
+    }
+    list.sort((a, b) => b.score.compareTo(a.score));
+    for (var i = 0; i < list.length; i++) {
+      list[i] = list[i].copyWith(rank: i + 1);
+    }
+    return list.take(10).toList();
+  }
+
+  List<LeaderboardEntry> _currentList() {
+    return _selected == '总榜'
+        ? widget.entries
+        : _buildSubTopicLeaderboard(widget.topic, _selected, widget.yourBest);
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  const _InfoChip({required this.label, required this.value});
+
+  final String label;
+  final String value;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: color.withOpacity(0.6)),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFFFD166)),
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: const Icon(Icons.emoji_events_rounded, color: Color(0xFFFF9F1C)),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 4),
-                Text('榜首：$leader', style: const TextStyle(color: Color(0xFF6F6B60))),
-              ],
-            ),
-          ),
-          Text(score, style: const TextStyle(fontWeight: FontWeight.w700)),
-        ],
+      child: Text(
+        '$label $value',
+        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
       ),
     );
   }
 }
 
 class QuizPage extends StatefulWidget {
-  const QuizPage({super.key, required this.topic});
+  const QuizPage({
+    super.key,
+    required this.topic,
+    required this.subtopic,
+    required this.data,
+  });
 
   final String topic;
+  final String subtopic;
+  final DemoData data;
 
   @override
   State<QuizPage> createState() => _QuizPageState();
 }
 
-class _QuizPageState extends State<QuizPage> {
-  static const int _total = 10;
+class DuelQuizPage extends StatefulWidget {
+  const DuelQuizPage({
+    super.key,
+    required this.topic,
+    required this.subtopic,
+    required this.data,
+  });
+
+  final String topic;
+  final String subtopic;
+  final DemoData data;
+
+  @override
+  State<DuelQuizPage> createState() => _DuelQuizPageState();
+}
+
+class LanDuelPage extends StatefulWidget {
+  const LanDuelPage({
+    super.key,
+    required this.connection,
+    required this.data,
+    required this.topic,
+    required this.subtopic,
+    required this.seed,
+    required this.count,
+    required this.isHost,
+    required this.room,
+  });
+
+  final DuelConnection connection;
+  final DemoData data;
+  final String topic;
+  final String subtopic;
+  final int seed;
+  final int count;
+  final bool isHost;
+  final String? room;
+
+  @override
+  State<LanDuelPage> createState() => _LanDuelPageState();
+}
+
+class _LanDuelPageState extends State<LanDuelPage> {
+  static const int _secondsPerQuestion = 12;
   late final List<Question> _questions;
+  Timer? _timer;
+  StreamSubscription<Map<String, dynamic>>? _sub;
   int _index = 0;
   int _score = 0;
+  int _opponentScore = 0;
+  int _correct = 0;
+  int _remaining = _secondsPerQuestion;
   bool _answered = false;
   String? _selected;
+  int _opponentIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    final data = DemoData.fallback();
+    _questions = _buildQuestions();
+    _listen();
+    _startTimer();
+    if (!widget.isHost) {
+      widget.connection.send({'type': 'ready'});
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _sub?.cancel();
+    widget.connection.close();
+    super.dispose();
+  }
+
+  void _listen() {
+    _sub = widget.connection.messages.listen((msg) {
+      switch (msg['type']) {
+        case 'progress':
+          setState(() {
+            _opponentScore = (msg['score'] as num?)?.toInt() ?? _opponentScore;
+            _opponentIndex = (msg['index'] as num?)?.toInt() ?? _opponentIndex;
+          });
+          break;
+        case 'finish':
+          setState(() {
+            _opponentScore = (msg['score'] as num?)?.toInt() ?? _opponentScore;
+            _opponentIndex = _questions.length;
+          });
+          break;
+        case 'start':
+          if (!widget.isHost) {
+            // handled in join flow, ignore if duplicated
+          }
+          break;
+        default:
+          break;
+      }
+    });
+  }
+
+  List<Question> _buildQuestions() {
     final pool = widget.topic == '全部'
-        ? data.questions
-        : data.questions.where((q) => q.topic == widget.topic).toList();
-    final list = List<Question>.from(pool);
-    list.shuffle(Random());
-    _questions = list.take(_total).toList();
+        ? widget.data.questions
+        : widget.data.questions.where((q) => q.topic == widget.topic).toList();
+    final filtered = widget.subtopic == '全部'
+        ? pool
+        : pool.where((q) => q.subtopic == widget.subtopic).toList();
+    final list = List<Question>.from(filtered.isEmpty ? pool : filtered);
+    list.shuffle(Random(widget.seed));
+    return list.take(min(widget.count, list.length)).toList();
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    setState(() => _remaining = _secondsPerQuestion);
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      if (_answered) return;
+      if (_remaining <= 1) {
+        timer.cancel();
+        _timeout();
+      } else {
+        setState(() => _remaining -= 1);
+      }
+    });
+  }
+
+  void _timeout() {
+    if (_answered) return;
+    setState(() {
+      _answered = true;
+      _selected = null;
+    });
   }
 
   void _answer(String option) {
     if (_answered) return;
     final correct = _questions[_index].answer;
+    _timer?.cancel();
     setState(() {
       _selected = option;
       _answered = true;
       if (option.startsWith(correct)) {
-        _score += 10;
+        _score += 10 + _remaining;
+        _correct += 1;
       }
     });
   }
 
   void _next() {
-    if (_index + 1 >= _questions.length) {
+    final done = _index + 1 >= _questions.length;
+    if (done) {
+      _send({'type': 'finish', 'score': _score});
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) => QuizResultPage(score: _score, total: _questions.length),
+          builder: (_) => QuizResultPage(
+            score: _score,
+            total: _questions.length,
+            correct: _correct,
+            timeUsed: (_questions.length * _secondsPerQuestion) - _remaining,
+            maxStreak: 0,
+            accuracyBonus: 0,
+          ),
         ),
       );
       return;
@@ -2382,6 +4310,581 @@ class _QuizPageState extends State<QuizPage> {
       _answered = false;
       _selected = null;
     });
+    _send({
+      'type': 'progress',
+      'score': _score,
+      'index': _index,
+    });
+    _startTimer();
+  }
+
+  void _send(Map<String, dynamic> data) {
+    if (widget.room != null) {
+      data = {...data, 'room': widget.room};
+    }
+    widget.connection.send(data);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final q = _questions[_index];
+    return Scaffold(
+      body: Stack(
+        children: [
+          const StarryBackground(),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                      const SizedBox(width: 6),
+                      Text('局域网对战', style: Theme.of(context).textTheme.headlineMedium),
+                      const Spacer(),
+                      _InfoChip(label: '我方', value: '$_score'),
+                      const SizedBox(width: 6),
+                      _InfoChip(label: '对手', value: '$_opponentScore'),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: LinearProgressIndicator(
+                          value: (_index + 1) / _questions.length,
+                          minHeight: 6,
+                          backgroundColor: const Color(0xFFFFF1D0),
+                          valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFF9F1C)),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text('${_index + 1}/${_questions.length}'),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: LinearProgressIndicator(
+                          value: (_opponentIndex + 1) / _questions.length,
+                          minHeight: 6,
+                          backgroundColor: const Color(0xFFE8F3FF),
+                          valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF5DADE2)),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text('对手 ${_opponentIndex + 1}/${_questions.length}'),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: LinearProgressIndicator(
+                      minHeight: 6,
+                      value: _remaining / _secondsPerQuestion,
+                      backgroundColor: const Color(0xFFFFF1D0),
+                      valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFF9F1C)),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(color: const Color(0xFFFFD166)),
+                    ),
+                    child: Text(q.title, style: Theme.of(context).textTheme.titleLarge),
+                  ),
+                  const SizedBox(height: 14),
+                  ...q.options.map(
+                    (opt) {
+                      final isSelected = _selected == opt;
+                      final isCorrect = _answered && opt.startsWith(q.answer);
+                      final isWrong = _answered && isSelected && !isCorrect;
+                      final color = isCorrect
+                          ? const Color(0xFFB8F1E0)
+                          : isWrong
+                              ? const Color(0xFFFFD6D6)
+                              : isSelected
+                                  ? const Color(0xFFFFE1A8)
+                                  : Colors.white;
+                      return GestureDetector(
+                        onTap: () => _answer(opt),
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                          decoration: BoxDecoration(
+                            color: color,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFF1E6CE)),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(child: Text(opt)),
+                              if (_answered && isCorrect)
+                                const Icon(Icons.check_circle_rounded, color: Color(0xFF2EC4B6))
+                              else if (_answered && isWrong)
+                                const Icon(Icons.cancel_rounded, color: Color(0xFFE63946)),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  const Spacer(),
+                  if (_answered)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF8E6),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Text(
+                        _selected != null && _selected!.startsWith(q.answer)
+                            ? '回答正确！继续下一题～'
+                            : _selected == null
+                                ? '时间到！正确答案：${q.answer}'
+                                : '正确答案：${q.answer}，再接再厉！',
+                      ),
+                    ),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _answered ? _next : null,
+                      child: Text(_index + 1 == _questions.length ? '完成' : '下一题'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DuelQuizPageState extends State<DuelQuizPage> {
+  static const int _total = 10;
+  static const int _secondsPerQuestion = 12;
+  late final List<Question> _questions;
+  Timer? _timer;
+  Timer? _aiTimer;
+  int _index = 0;
+  int _score = 0;
+  int _aiScore = 0;
+  int _correct = 0;
+  int _currentStreak = 0;
+  int _maxStreak = 0;
+  int _elapsedSeconds = 0;
+  int _remaining = _secondsPerQuestion;
+  bool _answered = false;
+  bool _aiAnswered = false;
+  bool _autoAdvanceScheduled = false;
+  String? _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    final pool = widget.topic == '全部'
+        ? widget.data.questions
+        : widget.data.questions.where((q) => q.topic == widget.topic).toList();
+    final filtered = widget.subtopic == '全部'
+        ? pool
+        : pool.where((q) => q.subtopic == widget.subtopic).toList();
+    final list = List<Question>.from(filtered.isEmpty ? pool : filtered);
+    list.shuffle(Random());
+    final count = min(_total, list.length);
+    _questions = list.take(count).toList();
+    _startTimer();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _aiTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    _aiTimer?.cancel();
+    _aiAnswered = false;
+    setState(() => _remaining = _secondsPerQuestion);
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      if (_answered) return;
+      if (_remaining <= 1) {
+        timer.cancel();
+        _timeout();
+      } else {
+        setState(() => _remaining -= 1);
+      }
+    });
+    _scheduleAiAnswer();
+  }
+
+  void _scheduleAiAnswer() {
+    final rng = Random();
+    final delay = rng.nextInt(7) + 2; // 2..8s
+    if (delay >= _remaining) {
+      return;
+    }
+    _aiTimer = Timer(Duration(seconds: delay), () {
+      if (!mounted || _aiAnswered) return;
+      _aiAnswered = true;
+      final correct = _questions[_index].answer;
+      final accuracy = 0.7;
+      final willCorrect = rng.nextDouble() < accuracy;
+      if (willCorrect) {
+        _aiScore += 10 + (_remaining - delay).clamp(0, _secondsPerQuestion);
+      }
+      setState(() {});
+    });
+  }
+
+  void _timeout() {
+    if (_answered) return;
+    setState(() {
+      _answered = true;
+      _selected = null;
+      _currentStreak = 0;
+      _elapsedSeconds += _secondsPerQuestion;
+    });
+    if (_autoAdvanceScheduled) return;
+    _autoAdvanceScheduled = true;
+    Future.delayed(const Duration(milliseconds: 600), () {
+      if (mounted) {
+        _next();
+      }
+    });
+  }
+
+  void _answer(String option) {
+    if (_answered) return;
+    final correct = _questions[_index].answer;
+    final used = _secondsPerQuestion - _remaining;
+    _timer?.cancel();
+    setState(() {
+      _selected = option;
+      _answered = true;
+      _elapsedSeconds += used;
+      if (option.startsWith(correct)) {
+        _score += 10 + _remaining;
+        _correct += 1;
+        _currentStreak += 1;
+        if (_currentStreak > _maxStreak) {
+          _maxStreak = _currentStreak;
+        }
+        if (_currentStreak >= 2) {
+          _score += 2 * (_currentStreak - 1);
+        }
+      } else {
+        _currentStreak = 0;
+      }
+    });
+  }
+
+  void _next() {
+    if (_index + 1 >= _questions.length) {
+      _timer?.cancel();
+      _aiTimer?.cancel();
+      final accuracy = _questions.isEmpty ? 0.0 : _correct / _questions.length;
+      final bonus = accuracy >= 0.9 ? 30 : accuracy >= 0.8 ? 20 : accuracy >= 0.6 ? 10 : 0;
+      final finalScore = _score + bonus;
+      ArenaStatsStore.submit(
+        score: finalScore,
+        correct: _correct,
+        topic: widget.topic,
+        maxStreak: _maxStreak,
+        accuracy: accuracy,
+      );
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => QuizResultPage(
+            score: finalScore,
+            total: _questions.length,
+            correct: _correct,
+            timeUsed: _elapsedSeconds,
+            maxStreak: _maxStreak,
+            accuracyBonus: bonus,
+          ),
+        ),
+      );
+      return;
+    }
+    setState(() {
+      _index += 1;
+      _answered = false;
+      _selected = null;
+      _autoAdvanceScheduled = false;
+    });
+    _startTimer();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final q = _questions[_index];
+    return Scaffold(
+      body: Stack(
+        children: [
+          const StarryBackground(),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                      const SizedBox(width: 6),
+                      Text('本地对战', style: Theme.of(context).textTheme.headlineMedium),
+                      const Spacer(),
+                      _InfoChip(label: '我方', value: '$_score'),
+                      const SizedBox(width: 6),
+                      _InfoChip(label: '对手', value: '$_aiScore'),
+                      const SizedBox(width: 8),
+                      Text('${_index + 1}/${_questions.length}'),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: LinearProgressIndicator(
+                      minHeight: 6,
+                      value: _remaining / _secondsPerQuestion,
+                      backgroundColor: const Color(0xFFFFF1D0),
+                      valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFF9F1C)),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(color: const Color(0xFFFFD166)),
+                    ),
+                    child: Text(q.title, style: Theme.of(context).textTheme.titleLarge),
+                  ),
+                  const SizedBox(height: 14),
+                  ...q.options.map(
+                    (opt) {
+                      final isSelected = _selected == opt;
+                      final isCorrect = _answered && opt.startsWith(q.answer);
+                      final isWrong = _answered && isSelected && !isCorrect;
+                      final color = isCorrect
+                          ? const Color(0xFFB8F1E0)
+                          : isWrong
+                              ? const Color(0xFFFFD6D6)
+                              : isSelected
+                                  ? const Color(0xFFFFE1A8)
+                                  : Colors.white;
+                      return GestureDetector(
+                        onTap: () => _answer(opt),
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                          decoration: BoxDecoration(
+                            color: color,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFF1E6CE)),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(child: Text(opt)),
+                              if (_answered && isCorrect)
+                                const Icon(Icons.check_circle_rounded, color: Color(0xFF2EC4B6))
+                              else if (_answered && isWrong)
+                                const Icon(Icons.cancel_rounded, color: Color(0xFFE63946)),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  const Spacer(),
+                  if (_answered)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF8E6),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Text(
+                        _selected != null && _selected!.startsWith(q.answer)
+                            ? '回答正确！继续下一题～'
+                            : _selected == null
+                                ? '时间到！正确答案：${q.answer}'
+                                : '正确答案：${q.answer}，再接再厉！',
+                      ),
+                    ),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _answered ? _next : null,
+                      child: Text(_index + 1 == _questions.length ? '完成' : '下一题'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuizPageState extends State<QuizPage> {
+  static const int _total = 10;
+  static const int _secondsPerQuestion = 12;
+  late final List<Question> _questions;
+  Timer? _timer;
+  int _index = 0;
+  int _score = 0;
+  int _correct = 0;
+  int _currentStreak = 0;
+  int _maxStreak = 0;
+  int _accuracyBonus = 0;
+  int _elapsedSeconds = 0;
+  int _remaining = _secondsPerQuestion;
+  bool _answered = false;
+  bool _autoAdvanceScheduled = false;
+  String? _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    final pool = widget.topic == '全部'
+        ? widget.data.questions
+        : widget.data.questions.where((q) => q.topic == widget.topic).toList();
+    final filtered = widget.subtopic == '全部'
+        ? pool
+        : pool.where((q) => q.subtopic == widget.subtopic).toList();
+    final list = List<Question>.from(filtered.isEmpty ? pool : filtered);
+    list.shuffle(Random());
+    final count = min(_total, list.length);
+    _questions = list.take(count).toList();
+    _startTimer();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    setState(() => _remaining = _secondsPerQuestion);
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      if (_answered) return;
+      if (_remaining <= 1) {
+        timer.cancel();
+        _timeout();
+      } else {
+        setState(() => _remaining -= 1);
+      }
+    });
+  }
+
+  void _timeout() {
+    if (_answered) return;
+    setState(() {
+      _answered = true;
+      _selected = null;
+      _currentStreak = 0;
+      _elapsedSeconds += _secondsPerQuestion;
+    });
+    if (_autoAdvanceScheduled) return;
+    _autoAdvanceScheduled = true;
+    Future.delayed(const Duration(milliseconds: 600), () {
+      if (mounted) {
+        _next();
+      }
+    });
+  }
+
+  void _answer(String option) {
+    if (_answered) return;
+    final correct = _questions[_index].answer;
+    final used = _secondsPerQuestion - _remaining;
+    _timer?.cancel();
+    setState(() {
+      _selected = option;
+      _answered = true;
+      _elapsedSeconds += used;
+      if (option.startsWith(correct)) {
+        _score += 10 + _remaining;
+        _correct += 1;
+        _currentStreak += 1;
+        if (_currentStreak > _maxStreak) {
+          _maxStreak = _currentStreak;
+        }
+        if (_currentStreak >= 2) {
+          _score += 2 * (_currentStreak - 1);
+        }
+      } else {
+        _currentStreak = 0;
+      }
+    });
+  }
+
+  void _next() {
+    if (_index + 1 >= _questions.length) {
+      _timer?.cancel();
+      final accuracy = _questions.isEmpty ? 0.0 : _correct / _questions.length;
+      _accuracyBonus = accuracy >= 0.9
+          ? 30
+          : accuracy >= 0.8
+              ? 20
+              : accuracy >= 0.6
+                  ? 10
+                  : 0;
+      final finalScore = _score + _accuracyBonus;
+      ArenaStatsStore.submit(
+        score: finalScore,
+        correct: _correct,
+        topic: widget.topic,
+        maxStreak: _maxStreak,
+        accuracy: accuracy,
+      );
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => QuizResultPage(
+            score: finalScore,
+            total: _questions.length,
+            correct: _correct,
+            timeUsed: _elapsedSeconds,
+            maxStreak: _maxStreak,
+            accuracyBonus: _accuracyBonus,
+          ),
+        ),
+      );
+      return;
+    }
+    setState(() {
+      _index += 1;
+      _answered = false;
+      _selected = null;
+      _autoAdvanceScheduled = false;
+    });
+    _startTimer();
   }
 
   @override
@@ -2406,7 +4909,11 @@ class _QuizPageState extends State<QuizPage> {
                       const SizedBox(width: 6),
                       Text('个人答题', style: Theme.of(context).textTheme.headlineMedium),
                       const Spacer(),
-                      Text('${_index + 1}/$_total'),
+                      _InfoChip(label: '得分', value: '$_score'),
+                      const SizedBox(width: 8),
+                      _InfoChip(label: '剩余', value: '${_remaining}s'),
+                      const SizedBox(width: 10),
+                      Text('${_index + 1}/${_questions.length}'),
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -2418,6 +4925,16 @@ class _QuizPageState extends State<QuizPage> {
                       border: Border.all(color: const Color(0xFFFFD166)),
                     ),
                     child: Text(q.title, style: Theme.of(context).textTheme.titleLarge),
+                  ),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: LinearProgressIndicator(
+                      minHeight: 6,
+                      value: _remaining / _secondsPerQuestion,
+                      backgroundColor: const Color(0xFFFFF1D0),
+                      valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFF9F1C)),
+                    ),
                   ),
                   const SizedBox(height: 14),
                   ...q.options.map(
@@ -2467,7 +4984,9 @@ class _QuizPageState extends State<QuizPage> {
                       child: Text(
                         _selected != null && _selected!.startsWith(q.answer)
                             ? '回答正确！继续下一题～'
-                            : '正确答案：${q.answer}，再接再厉！',
+                            : _selected == null
+                                ? '时间到！正确答案：${q.answer}'
+                                : '正确答案：${q.answer}，再接再厉！',
                       ),
                     ),
                   SizedBox(
@@ -2487,11 +5006,42 @@ class _QuizPageState extends State<QuizPage> {
   }
 }
 
-class QuizResultPage extends StatelessWidget {
-  const QuizResultPage({super.key, required this.score, required this.total});
+class QuizResultPage extends StatefulWidget {
+  const QuizResultPage({
+    super.key,
+    required this.score,
+    required this.total,
+    required this.correct,
+    required this.timeUsed,
+    required this.maxStreak,
+    required this.accuracyBonus,
+  });
 
   final int score;
   final int total;
+  final int correct;
+  final int timeUsed;
+  final int maxStreak;
+  final int accuracyBonus;
+
+  @override
+  State<QuizResultPage> createState() => _QuizResultPageState();
+}
+
+class _QuizResultPageState extends State<QuizResultPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final newlyUnlocked = ArenaStatsStore.consumeNewBadges();
+      if (newlyUnlocked.isEmpty) return;
+      showModalBottomSheet<void>(
+        context: context,
+        backgroundColor: Colors.transparent,
+        builder: (_) => _AchievementPopup(names: newlyUnlocked),
+      );
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2519,9 +5069,17 @@ class QuizResultPage extends StatelessWidget {
                       children: [
                         Text('总分', style: Theme.of(context).textTheme.titleMedium),
                         const SizedBox(height: 8),
-                        Text('$score', style: Theme.of(context).textTheme.displaySmall),
+                        Text('${widget.score}', style: Theme.of(context).textTheme.displaySmall),
                         const SizedBox(height: 10),
-                        Text('正确题数：${score ~/ 10}/$total'),
+                        Text('正确题数：${widget.correct}/${widget.total}'),
+                        const SizedBox(height: 6),
+                        Text('用时：${widget.timeUsed}s'),
+                        const SizedBox(height: 6),
+                        Text('正确率：${(widget.correct / widget.total * 100).toStringAsFixed(0)}%'),
+                        const SizedBox(height: 6),
+                        Text('最高连击：${widget.maxStreak}'),
+                        const SizedBox(height: 6),
+                        Text('准确率加分：+${widget.accuracyBonus}'),
                       ],
                     ),
                   ),
@@ -2910,7 +5468,24 @@ class ProfilePage extends StatelessWidget {
                 const SizedBox(height: 16),
                 Text('成就墙', style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 12),
-                BadgeWall(badges: data.achievements.map((item) => item.name).toList()),
+                ValueListenableBuilder<ArenaStats>(
+                  valueListenable: ArenaStatsStore.stats,
+                  builder: (context, stats, _) {
+                    final progress = _buildAchievementProgress(data, stats);
+                    if (progress.isEmpty) {
+                      return Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: const Color(0xFFE9E0C9)),
+                        ),
+                        child: const Text('完成一次擂台挑战即可解锁成就～'),
+                      );
+                    }
+                    return AchievementWall(items: progress);
+                  },
+                ),
                 const SizedBox(height: 16),
                 Container(
                   padding: const EdgeInsets.all(16),
@@ -2987,6 +5562,238 @@ class ProfilePage extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+List<String> _resolveBadges(DemoData data, ArenaStats stats) {
+  final names = <String>[];
+  for (final badge in data.achievements) {
+    switch (badge.name) {
+      case '闪亮新星':
+        if (stats.matches >= 1) names.add(badge.name);
+        break;
+      case '连胜三场':
+        if (stats.maxStreak >= 3) names.add(badge.name);
+        break;
+      case '探索家':
+        if (stats.totalScore >= 300) names.add(badge.name);
+        break;
+      case '观察大师':
+        if (stats.bestAccuracy >= 0.9) names.add(badge.name);
+        break;
+      case '历史小通':
+        if ((stats.topicBest['历史'] ?? 0) >= 120) names.add(badge.name);
+        break;
+      case '篮球达人':
+        if ((stats.topicBest['篮球'] ?? 0) >= 120) names.add(badge.name);
+        break;
+      default:
+        break;
+    }
+  }
+  return names;
+}
+
+class AchievementProgress {
+  const AchievementProgress({
+    required this.name,
+    required this.description,
+    required this.level,
+    required this.progress,
+    required this.nextTarget,
+  });
+
+  final String name;
+  final String description;
+  final int level;
+  final double progress;
+  final String nextTarget;
+}
+
+List<AchievementProgress> _buildAchievementProgress(DemoData data, ArenaStats stats) {
+  final items = <AchievementProgress>[];
+  for (final badge in data.achievements) {
+    switch (badge.name) {
+      case '闪亮新星':
+        items.add(
+          AchievementProgress(
+            name: badge.name,
+            description: '完成 1 次擂台挑战',
+            level: stats.matches >= 1 ? 1 : 0,
+            progress: (stats.matches >= 1) ? 1.0 : stats.matches / 1.0,
+            nextTarget: '完成 1 次挑战',
+          ),
+        );
+        break;
+      case '连胜三场':
+        items.add(
+          AchievementProgress(
+            name: badge.name,
+            description: '连续答对 3 题',
+            level: stats.maxStreak >= 3 ? 1 : 0,
+            progress: (stats.maxStreak / 3.0).clamp(0.0, 1.0),
+            nextTarget: '连击 3 题',
+          ),
+        );
+        break;
+      case '探索家':
+        final thresholds = [300, 600, 1000];
+        final level = thresholds.where((t) => stats.totalScore >= t).length;
+        final next = level < thresholds.length ? thresholds[level] : thresholds.last;
+        items.add(
+          AchievementProgress(
+            name: badge.name,
+            description: '累计积分达到阶段目标',
+            level: level,
+            progress: (stats.totalScore / next).clamp(0.0, 1.0),
+            nextTarget: '累计 $next 分',
+          ),
+        );
+        break;
+      case '观察大师':
+        items.add(
+          AchievementProgress(
+            name: badge.name,
+            description: '单局准确率达到 90%',
+            level: stats.bestAccuracy >= 0.9 ? 1 : 0,
+            progress: (stats.bestAccuracy / 0.9).clamp(0.0, 1.0),
+            nextTarget: '准确率 ≥ 90%',
+          ),
+        );
+        break;
+      case '历史小通':
+        final best = stats.topicBest['历史'] ?? 0;
+        items.add(
+          AchievementProgress(
+            name: badge.name,
+            description: '历史分区单局 ≥ 120',
+            level: best >= 120 ? 1 : 0,
+            progress: (best / 120.0).clamp(0.0, 1.0),
+            nextTarget: '历史分区 120 分',
+          ),
+        );
+        break;
+      case '篮球达人':
+        final best = stats.topicBest['篮球'] ?? 0;
+        items.add(
+          AchievementProgress(
+            name: badge.name,
+            description: '篮球分区单局 ≥ 120',
+            level: best >= 120 ? 1 : 0,
+            progress: (best / 120.0).clamp(0.0, 1.0),
+            nextTarget: '篮球分区 120 分',
+          ),
+        );
+        break;
+      default:
+        break;
+    }
+  }
+  return items;
+}
+
+class AchievementWall extends StatelessWidget {
+  const AchievementWall({super.key, required this.items});
+
+  final List<AchievementProgress> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: items
+          .map(
+            (item) => Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: const Color(0xFFE9E0C9)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        item.level > 0 ? Icons.emoji_events_rounded : Icons.lock_outline_rounded,
+                        color: item.level > 0 ? const Color(0xFFFF9F1C) : const Color(0xFFB0AFA6),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          item.name,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      Text('Lv.${item.level}', style: const TextStyle(color: Color(0xFF6F6B60))),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(item.description, style: const TextStyle(color: Color(0xFF6F6B60))),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      value: item.progress,
+                      minHeight: 6,
+                      backgroundColor: const Color(0xFFFFF1D0),
+                      valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFF9F1C)),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text('下一目标：${item.nextTarget}', style: const TextStyle(fontSize: 12)),
+                ],
+              ),
+            ),
+          )
+          .toList(),
+    );
+  }
+}
+
+class _AchievementPopup extends StatelessWidget {
+  const _AchievementPopup({required this.names});
+
+  final List<String> names;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('新成就解锁', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+          const SizedBox(height: 12),
+          ...names.map(
+            (name) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.emoji_events_rounded, color: Color(0xFFFF9F1C)),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(name)),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('知道啦'),
             ),
           ),
         ],

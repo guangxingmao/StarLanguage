@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <style>
+    html,
+    body {
+      width: 720pt;
+      height: 405pt;
+      margin: 0;
+      padding: 0;
+      font-family: "Trebuchet MS", Arial, sans-serif;
+      display: flex;
+      background-image: url('../assets/bg-dark.png');
+      background-size: cover;
+    }
+
+    .wrap {
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
+
+    .content {
+      position: absolute;
+      left: 48pt;
+      top: 70pt;
+    }
+
+    .logo {
+      display: inline-block;
+      background: #FF9F1C;
+      padding: 6pt 14pt;
+      border-radius: 10pt;
+    }
+
+    .logo-text {
+      font-size: 13pt;
+      color: #fff;
+      font-weight: bold;
+    }
+
+    h1 {
+      margin: 18pt 0 0 0;
+      font-size: 48pt;
+      color: #fff;
+      letter-spacing: 2pt;
+      font-weight: 700;
+    }
+
+    h2 {
+      margin: 10pt 0 0 0;
+      font-size: 20pt;
+      color: #FF9F1C;
+      font-weight: 600;
+    }
+
+    .desc {
+      margin-top: 16pt;
+      font-size: 13pt;
+      color: rgba(255, 255, 255, 0.7);
+      line-height: 1.5;
+    }
+
+    .tags {
+      position: absolute;
+      left: 48pt;
+      top: 280pt;
+      display: flex;
+      gap: 10pt;
+    }
+
+    .tag {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1pt solid rgba(255, 255, 255, 0.25);
+      padding: 5pt 12pt;
+      border-radius: 16pt;
+    }
+
+    .tag-text {
+      font-size: 10pt;
+      color: #fff;
+    }
+
+    .footer {
+      position: absolute;
+      bottom: 24pt;
+      left: 48pt;
+    }
+
+    .footer-text {
+      font-size: 10pt;
+      color: rgba(255, 255, 255, 0.45);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="content">
+      <div class="logo">
+        <p class="logo-text">StarKnow</p>
+      </div>
+      <h1>星知</h1>
+      <h2>儿童通识教育 App Demo</h2>
+      <p class="desc">面向 6-12 岁儿童与家庭共学的知识探索平台，聚焦高质量 UI 与核心功能原型展示</p>
+    </div>
+    <div class="tags">
+      <div class="tag">
+        <p class="tag-text">学习流</p>
+      </div>
+      <div class="tag">
+        <p class="tag-text">AI 助手</p>
+      </div>
+      <div class="tag">
+        <p class="tag-text">知识擂台</p>
+      </div>
+      <div class="tag">
+        <p class="tag-text">兴趣社群</p>
+      </div>
+      <div class="tag">
+        <p class="tag-text">成长体系</p>
+      </div>
+    </div>
+    <div class="footer">
+      <p class="footer-text">Flutter Web · 本地演示 · 2026</p>
+    </div>
+  </div>
+</body>
+
+</html>

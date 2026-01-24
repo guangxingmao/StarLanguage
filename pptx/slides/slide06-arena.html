@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <style>
+    html,
+    body {
+      width: 720pt;
+      height: 405pt;
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      display: flex;
+      background-image: url('../assets/bg-accent.png');
+      background-size: cover;
+    }
+
+    .wrap {
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
+
+    .header {
+      position: absolute;
+      left: 24pt;
+      top: 24pt;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24pt;
+      color: #1a1a2e;
+      font-weight: 700;
+    }
+
+    .subtitle {
+      margin-top: 3pt;
+      font-size: 11pt;
+      color: #666;
+    }
+
+    .grid {
+      position: absolute;
+      left: 24pt;
+      top: 78pt;
+      right: 24pt;
+      display: flex;
+      gap: 10pt;
+    }
+
+    .card {
+      flex: 1;
+      background: #fff;
+      border-radius: 10pt;
+      padding: 12pt 12pt;
+      border: 1pt solid #eee;
+      box-shadow: 0 2pt 6pt rgba(0, 0, 0, 0.05);
+    }
+
+    .card-title {
+      font-size: 11pt;
+      color: #FF9F1C;
+      font-weight: 700;
+      margin-bottom: 6pt;
+    }
+
+    .card-text {
+      font-size: 9pt;
+      color: #555;
+      line-height: 1.35;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="header">
+      <h1>知识擂台</h1>
+      <p class="subtitle">趣味答题挑战与排行榜</p>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <p class="card-title">主题筛选</p>
+        <p class="card-text">历史/计算机/篮球/动物</p>
+        <p class="card-text">子分区进一步细分</p>
+        <p class="card-text">按兴趣选择擂台</p>
+      </div>
+      <div class="card">
+        <p class="card-title">答题机制</p>
+        <p class="card-text">12 秒单题倒计时</p>
+        <p class="card-text">速度加分 + 连击加成</p>
+        <p class="card-text">超时自动进入下一题</p>
+      </div>
+      <div class="card">
+        <p class="card-title">对战模式</p>
+        <p class="card-text">局域网在线对战</p>
+        <p class="card-text">输入 IP 快速匹配</p>
+        <p class="card-text">实时同步双方进度</p>
+      </div>
+      <div class="card">
+        <p class="card-title">排行榜</p>
+        <p class="card-text">在线 PK 排行</p>
+        <p class="card-text">个人积分排行</p>
+        <p class="card-text">分区榜单详情</p>
+      </div>
+    </div>
+  </div>
+</body>
+
+</html>

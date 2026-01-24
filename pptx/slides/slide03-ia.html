@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <style>
+    html,
+    body {
+      width: 720pt;
+      height: 405pt;
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      display: flex;
+      background-image: url('../assets/bg-accent.png');
+      background-size: cover;
+    }
+
+    .wrap {
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
+
+    .header {
+      position: absolute;
+      left: 24pt;
+      top: 24pt;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24pt;
+      color: #1a1a2e;
+      font-weight: 700;
+    }
+
+    .subtitle {
+      margin-top: 3pt;
+      font-size: 11pt;
+      color: #666;
+    }
+
+    .center-area {
+      position: absolute;
+      left: 24pt;
+      top: 78pt;
+      right: 24pt;
+    }
+
+    .nav-container {
+      background: #fff;
+      border-radius: 14pt;
+      padding: 16pt 20pt;
+      border: 1pt solid #eee;
+      box-shadow: 0 2pt 10pt rgba(0, 0, 0, 0.05);
+    }
+
+    .nav-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10pt;
+      margin-bottom: 14pt;
+    }
+
+    .nav-item {
+      flex: 1;
+      text-align: center;
+      background: #f8f9fa;
+      border-radius: 10pt;
+      padding: 12pt 6pt;
+      border: 1pt solid #e9e9e9;
+    }
+
+    .nav-icon {
+      font-size: 20pt;
+      margin-bottom: 4pt;
+    }
+
+    .nav-label {
+      font-size: 11pt;
+      color: #1a1a2e;
+      font-weight: 600;
+    }
+
+    .nav-desc {
+      font-size: 8pt;
+      color: #888;
+      margin-top: 2pt;
+    }
+
+    .flow-text {
+      font-size: 10pt;
+      color: #666;
+      text-align: center;
+      margin-top: 10pt;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="header">
+      <h1>信息架构</h1>
+      <p class="subtitle">五大主入口，构建完整体验闭环</p>
+    </div>
+    <div class="center-area">
+      <div class="nav-container">
+        <div class="nav-row">
+          <div class="nav-item">
+            <p class="nav-icon">📚</p>
+            <p class="nav-label">学习</p>
+            <p class="nav-desc">内容瀑布流</p>
+          </div>
+          <div class="nav-item">
+            <p class="nav-icon">👥</p>
+            <p class="nav-label">社群</p>
+            <p class="nav-desc">话题与互动</p>
+          </div>
+          <div class="nav-item">
+            <p class="nav-icon">🤖</p>
+            <p class="nav-label">AI 助手</p>
+            <p class="nav-desc">问答与识图</p>
+          </div>
+          <div class="nav-item">
+            <p class="nav-icon">🏆</p>
+            <p class="nav-label">擂台</p>
+            <p class="nav-desc">答题与对战</p>
+          </div>
+          <div class="nav-item">
+            <p class="nav-icon">🌟</p>
+            <p class="nav-label">成长</p>
+            <p class="nav-desc">任务与成就</p>
+          </div>
+        </div>
+        <p class="flow-text">体验闭环：看内容 → 学知识 → 做题 → 成长/成就</p>
+      </div>
+    </div>
+  </div>
+</body>
+
+</html>

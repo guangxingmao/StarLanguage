@@ -1,16 +1,25 @@
-# starknow
+# 星知（StarKnow）
 
-A new Flutter project.
+一个面向儿童的通识教育 App Demo，围绕“趣味内容 + AI 助手 + 知识擂台 + 成长激励”构建完整体验闭环。
 
-## Getting Started
+## 主要功能
+- 学习流：可搜索、可筛选的图文/视频内容瀑布流
+- AI 助手：支持文本问答与图片识别的聊天式界面（本地演示）
+- 知识擂台：单人答题流程 + 排行榜
+- 社群：话题瀑布流、评论输入、个人主页访问
+- 成长：每日提醒、打卡任务、成长档案与个人主页
 
-This project is a starting point for a Flutter application.
+## 技术栈
+- Flutter（跨平台）
+- 本地 JSON 数据驱动
+- 本地存储（shared_preferences）
+- 外链打开（url_launcher）
 
-A few resources to get you started if this is your first Flutter project:
+## 运行
+```sh
+flutter pub get
+flutter run -d chrome
+```
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## 说明
+这是一个可演示 Demo，内容与社交功能目前以本地数据和占位交互为主，后续可接入真实内容与后端服务。

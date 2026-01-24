@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <style>
+    html,
+    body {
+      width: 720pt;
+      height: 405pt;
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      display: flex;
+      background-image: url('../assets/bg-dark.png');
+      background-size: cover;
+    }
+
+    .wrap {
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
+
+    .header {
+      position: absolute;
+      left: 32pt;
+      top: 28pt;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24pt;
+      color: #fff;
+      font-weight: 700;
+    }
+
+    .subtitle {
+      margin-top: 3pt;
+      font-size: 11pt;
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .grid {
+      position: absolute;
+      left: 32pt;
+      top: 82pt;
+      right: 32pt;
+      display: flex;
+      gap: 12pt;
+    }
+
+    .card {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 10pt;
+      padding: 12pt 14pt;
+      border: 1pt solid rgba(255, 255, 255, 0.12);
+    }
+
+    .card-title {
+      font-size: 12pt;
+      color: #FF9F1C;
+      font-weight: 700;
+      margin-bottom: 8pt;
+    }
+
+    .card-text {
+      font-size: 10pt;
+      color: rgba(255, 255, 255, 0.8);
+      line-height: 1.4;
+    }
+
+    .code {
+      font-family: "Courier New", monospace;
+      color: #B8F1E0;
+      font-size: 9pt;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="header">
+      <h1>技术栈</h1>
+      <p class="subtitle">Flutter 跨平台开发，本地数据驱动</p>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <p class="card-title">核心框架</p>
+        <p class="card-text">Flutter (Web 优先)</p>
+        <p class="card-text">Dart 语言</p>
+        <p class="card-text">跨平台支持</p>
+      </div>
+      <div class="card">
+        <p class="card-title">数据层</p>
+        <p class="card-text">JSON 本地数据驱动</p>
+        <p class="code">assets/data/demo.json</p>
+        <p class="card-text">题库与内容配置</p>
+      </div>
+      <div class="card">
+        <p class="card-title">状态管理</p>
+        <p class="code">ValueNotifier</p>
+        <p class="card-text">轻量级状态维护</p>
+        <p class="card-text">响应式 UI 更新</p>
+      </div>
+      <div class="card">
+        <p class="card-title">依赖包</p>
+        <p class="code">shared_preferences</p>
+        <p class="code">url_launcher</p>
+        <p class="code">image_picker</p>
+      </div>
+    </div>
+  </div>
+</body>
+
+</html>

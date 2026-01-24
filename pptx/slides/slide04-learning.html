@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <style>
+    html,
+    body {
+      width: 720pt;
+      height: 405pt;
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      display: flex;
+      background-image: url('../assets/bg-accent.png');
+      background-size: cover;
+    }
+
+    .wrap {
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
+
+    .header {
+      position: absolute;
+      left: 24pt;
+      top: 24pt;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24pt;
+      color: #1a1a2e;
+      font-weight: 700;
+    }
+
+    .subtitle {
+      margin-top: 3pt;
+      font-size: 11pt;
+      color: #666;
+    }
+
+    .grid {
+      position: absolute;
+      left: 24pt;
+      top: 78pt;
+      right: 24pt;
+      display: flex;
+      gap: 10pt;
+    }
+
+    .card {
+      flex: 1;
+      background: #fff;
+      border-radius: 10pt;
+      padding: 12pt 12pt;
+      border: 1pt solid #eee;
+      box-shadow: 0 2pt 6pt rgba(0, 0, 0, 0.05);
+    }
+
+    .card-title {
+      font-size: 11pt;
+      color: #FF9F1C;
+      font-weight: 700;
+      margin-bottom: 6pt;
+    }
+
+    .card-text {
+      font-size: 9pt;
+      color: #555;
+      line-height: 1.35;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="header">
+      <h1>学习流</h1>
+      <p class="subtitle">可搜索、可筛选的趣味内容瀑布流</p>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <p class="card-title">搜索与筛选</p>
+        <p class="card-text">支持关键词搜索</p>
+        <p class="card-text">按类型、来源、主题筛选</p>
+        <p class="card-text">快速定位感兴趣的内容</p>
+      </div>
+      <div class="card">
+        <p class="card-title">内容卡片</p>
+        <p class="card-text">封面插画 + 标题摘要</p>
+        <p class="card-text">来源与类型标识</p>
+        <p class="card-text">点击跳转外链详情</p>
+      </div>
+      <div class="card">
+        <p class="card-title">知识结构</p>
+        <p class="card-text">主题 - 子主题 - 知识点</p>
+        <p class="card-text">轻量级分类体系</p>
+        <p class="card-text">便于内容组织与检索</p>
+      </div>
+      <div class="card">
+        <p class="card-title">内容策略</p>
+        <p class="card-text">自建图文内容卡片</p>
+        <p class="card-text">视频通过外链跳转</p>
+        <p class="card-text">仅作 Demo 展示用途</p>
+      </div>
+    </div>
+  </div>
+</body>
+
+</html>

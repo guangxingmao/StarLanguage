@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <style>
+    html,
+    body {
+      width: 720pt;
+      height: 405pt;
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      display: flex;
+      background-image: url('../assets/bg-accent.png');
+      background-size: cover;
+    }
+
+    .wrap {
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
+
+    .header {
+      position: absolute;
+      left: 24pt;
+      top: 24pt;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24pt;
+      color: #1a1a2e;
+      font-weight: 700;
+    }
+
+    .subtitle {
+      margin-top: 3pt;
+      font-size: 11pt;
+      color: #666;
+    }
+
+    .grid {
+      position: absolute;
+      left: 24pt;
+      top: 78pt;
+      right: 24pt;
+      display: flex;
+      gap: 12pt;
+    }
+
+    .card {
+      flex: 1;
+      background: #fff;
+      border-radius: 10pt;
+      padding: 12pt 14pt;
+      border: 1pt solid #eee;
+      box-shadow: 0 2pt 6pt rgba(0, 0, 0, 0.05);
+    }
+
+    .card-title {
+      font-size: 12pt;
+      color: #1a1a2e;
+      font-weight: 700;
+      margin-bottom: 3pt;
+    }
+
+    .priority {
+      font-size: 9pt;
+      color: #FF9F1C;
+      font-weight: 600;
+      margin-bottom: 8pt;
+    }
+
+    .card-text {
+      font-size: 9pt;
+      color: #555;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="header">
+      <h1>Roadmap</h1>
+      <p class="subtitle">产品迭代规划</p>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <p class="card-title">近期待办</p>
+        <p class="priority">P0 / P1</p>
+        <p class="card-text">完善学习流内容素材</p>
+        <p class="card-text">题库扩充与难度梯度</p>
+        <p class="card-text">AI 助手接入真实模型</p>
+        <p class="card-text">本地对战体验优化</p>
+        <p class="card-text">成就系统扩展</p>
+      </div>
+      <div class="card">
+        <p class="card-title">中期规划</p>
+        <p class="priority">P2</p>
+        <p class="card-text">社群功能完善</p>
+        <p class="card-text">家庭共学模式</p>
+        <p class="card-text">成长档案与知识树</p>
+        <p class="card-text">天梯排行与段位制</p>
+        <p class="card-text">收藏/点赞功能</p>
+      </div>
+      <div class="card">
+        <p class="card-title">远期规划</p>
+        <p class="priority">P3</p>
+        <p class="card-text">知识图谱系统</p>
+        <p class="card-text">多人实时对战</p>
+        <p class="card-text">内容创作者接入</p>
+        <p class="card-text">后端服务接入</p>
+        <p class="card-text">多端发布</p>
+      </div>
+    </div>
+  </div>
+</body>
+
+</html>
