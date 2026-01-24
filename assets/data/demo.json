@@ -1,0 +1,1610 @@
+{
+  "topics": [
+    {
+      "id": "history",
+      "name": "历史"
+    },
+    {
+      "id": "cs",
+      "name": "计算机"
+    },
+    {
+      "id": "basketball",
+      "name": "篮球"
+    },
+    {
+      "id": "animals",
+      "name": "动物"
+    }
+  ],
+  "contents": [
+    {
+      "id": "c01",
+      "title": "甲骨文是什么？",
+      "summary": "刻在龟甲或兽骨上的古代文字记录。",
+      "tag": "历史入门",
+      "videoLabel": "图文",
+      "accent": "#5DADE2",
+      "type": "article",
+      "source": "Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Oracle_bone_script",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/1/1f/OracleBone.JPG"
+    },
+    {
+      "id": "c02",
+      "title": "四大发明有哪些？",
+      "summary": "造纸、印刷术、指南针、火药。",
+      "tag": "历史常识",
+      "videoLabel": "图文",
+      "accent": "#4BA3FF",
+      "type": "article",
+      "source": "Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Four_Great_Inventions",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/1/1f/OracleBone.JPG"
+    },
+    {
+      "id": "c03",
+      "title": "科举制度做什么？",
+      "summary": "中国古代选拔官员的考试制度。",
+      "tag": "历史制度",
+      "videoLabel": "图文",
+      "accent": "#5DADE2",
+      "type": "article",
+      "source": "Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Imperial_examination",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/1/1f/OracleBone.JPG"
+    },
+    {
+      "id": "c04",
+      "title": "长安城是什么？",
+      "summary": "中国古代重要都城，唐代的首都之一。",
+      "tag": "历史城市",
+      "videoLabel": "图文",
+      "accent": "#5DADE2",
+      "type": "article",
+      "source": "Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Chang%27an",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/1/1f/OracleBone.JPG"
+    },
+    {
+      "id": "c05",
+      "title": "唐朝是哪个时期？",
+      "summary": "公元 618–907 年的中国大一统王朝。",
+      "tag": "历史朝代",
+      "videoLabel": "图文",
+      "accent": "#5DADE2",
+      "type": "article",
+      "source": "Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Tang_dynasty",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/1/1f/OracleBone.JPG"
+    },
+    {
+      "id": "c06",
+      "title": "丝绸之路是什么？",
+      "summary": "连接东西方的古代贸易通道网络。",
+      "tag": "历史交通",
+      "videoLabel": "图文",
+      "accent": "#5DADE2",
+      "type": "article",
+      "source": "Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Silk_Road",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/1/1f/OracleBone.JPG"
+    },
+    {
+      "id": "c07",
+      "title": "大明宫是什么？",
+      "summary": "唐代长安的皇家宫殿群。",
+      "tag": "历史建筑",
+      "videoLabel": "图文",
+      "accent": "#5DADE2",
+      "type": "article",
+      "source": "Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Daming_Palace",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/1/1f/OracleBone.JPG"
+    },
+    {
+      "id": "c08",
+      "title": "唐代文化有多繁荣？",
+      "summary": "诗歌、绘画与城市生活高度发展。",
+      "tag": "历史文化",
+      "videoLabel": "图文",
+      "accent": "#5DADE2",
+      "type": "article",
+      "source": "Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Tang_dynasty",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/1/1f/OracleBone.JPG"
+    },
+    {
+      "id": "c09",
+      "title": "二进制是什么？",
+      "summary": "只用 0 和 1 表示数字的进制系统。",
+      "tag": "计算机基础",
+      "videoLabel": "图文",
+      "accent": "#9BDEAC",
+      "type": "article",
+      "source": "Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Binary_number",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/5/5a/Intel_8086_CPU_die.jpg"
+    },
+    {
+      "id": "c10",
+      "title": "二进制为什么重要？",
+      "summary": "计算机用二进制存储与处理信息。",
+      "tag": "计算机概念",
+      "videoLabel": "图文",
+      "accent": "#9BDEAC",
+      "type": "article",
+      "source": "Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Binary_number",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/5/5a/Intel_8086_CPU_die.jpg"
+    },
+    {
+      "id": "c11",
+      "title": "CPU 做什么？",
+      "summary": "执行程序指令的核心处理器。",
+      "tag": "计算机硬件",
+      "videoLabel": "图文",
+      "accent": "#B8F1E0",
+      "type": "article",
+      "source": "Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Central_processing_unit",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/5/5a/Intel_8086_CPU_die.jpg"
+    },
+    {
+      "id": "c12",
+      "title": "CPU 里有什么？",
+      "summary": "包含控制单元与算术逻辑单元。",
+      "tag": "计算机硬件",
+      "videoLabel": "图文",
+      "accent": "#B8F1E0",
+      "type": "article",
+      "source": "Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Central_processing_unit",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/5/5a/Intel_8086_CPU_die.jpg"
+    },
+    {
+      "id": "c13",
+      "title": "内存（RAM）是什么？",
+      "summary": "可读写、断电即失的数据存储。",
+      "tag": "计算机硬件",
+      "videoLabel": "图文",
+      "accent": "#6DD3CE",
+      "type": "article",
+      "source": "Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Random-access_memory",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/5/5a/Intel_8086_CPU_die.jpg"
+    },
+    {
+      "id": "c14",
+      "title": "RAM 为什么快？",
+      "summary": "能以接近恒定时间访问数据。",
+      "tag": "计算机硬件",
+      "videoLabel": "图文",
+      "accent": "#6DD3CE",
+      "type": "article",
+      "source": "Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Random-access_memory",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/5/5a/Intel_8086_CPU_die.jpg"
+    },
+    {
+      "id": "c15",
+      "title": "QWERTY 是什么？",
+      "summary": "最常见的英文键盘布局之一。",
+      "tag": "计算机历史",
+      "videoLabel": "图文",
+      "accent": "#9BDEAC",
+      "type": "article",
+      "source": "Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/QWERTY",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/1/1f/OracleBone.JPG"
+    },
+    {
+      "id": "c16",
+      "title": "QWERTY 从哪来？",
+      "summary": "源于早期打字机键盘布局。",
+      "tag": "计算机历史",
+      "videoLabel": "图文",
+      "accent": "#9BDEAC",
+      "type": "article",
+      "source": "Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/QWERTY",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/1/1f/OracleBone.JPG"
+    },
+    {
+      "id": "c17",
+      "title": "篮球一队几个人？",
+      "summary": "标准比赛每队上场 5 人。",
+      "tag": "篮球规则",
+      "videoLabel": "图文",
+      "accent": "#FFC857",
+      "type": "article",
+      "source": "Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Basketball",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/3/38/Basketball_games_in_Alma_Arena_2019_Dec.jpg"
+    },
+    {
+      "id": "c18",
+      "title": "篮球的目标是什么？",
+      "summary": "把球投入对方球篮得分。",
+      "tag": "篮球常识",
+      "videoLabel": "图文",
+      "accent": "#FFC857",
+      "type": "article",
+      "source": "Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Basketball",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/3/38/Basketball_games_in_Alma_Arena_2019_Dec.jpg"
+    },
+    {
+      "id": "c19",
+      "title": "24 秒规则是什么？",
+      "summary": "进攻方需在 24 秒内出手。",
+      "tag": "篮球规则",
+      "videoLabel": "图文",
+      "accent": "#FFB703",
+      "type": "article",
+      "source": "Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Shot_clock",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/3/38/Basketball_games_in_Alma_Arena_2019_Dec.jpg"
+    },
+    {
+      "id": "c20",
+      "title": "三分线有多远？",
+      "summary": "不同联赛距离不同，NBA 更远。",
+      "tag": "篮球规则",
+      "videoLabel": "图文",
+      "accent": "#F4A261",
+      "type": "article",
+      "source": "Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Three-point_field_goal",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/3/38/Basketball_games_in_Alma_Arena_2019_Dec.jpg"
+    },
+    {
+      "id": "c21",
+      "title": "什么是三分球？",
+      "summary": "在三分线外投篮得 3 分。",
+      "tag": "篮球规则",
+      "videoLabel": "图文",
+      "accent": "#F4A261",
+      "type": "article",
+      "source": "Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Three-point_field_goal",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/3/38/Basketball_games_in_Alma_Arena_2019_Dec.jpg"
+    },
+    {
+      "id": "c22",
+      "title": "罚球值几分？",
+      "summary": "罚球命中得 1 分。",
+      "tag": "篮球规则",
+      "videoLabel": "图文",
+      "accent": "#FFC857",
+      "type": "article",
+      "source": "Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Basketball",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/3/38/Basketball_games_in_Alma_Arena_2019_Dec.jpg"
+    },
+    {
+      "id": "c23",
+      "title": "为什么要运球？",
+      "summary": "带球移动时必须持续运球。",
+      "tag": "篮球规则",
+      "videoLabel": "图文",
+      "accent": "#FFC857",
+      "type": "article",
+      "source": "Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Basketball",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/3/38/Basketball_games_in_Alma_Arena_2019_Dec.jpg"
+    },
+    {
+      "id": "c24",
+      "title": "大熊猫吃什么？",
+      "summary": "主要以竹子为食。",
+      "tag": "动物科普",
+      "videoLabel": "图文",
+      "accent": "#6DD3CE",
+      "type": "article",
+      "source": "WWF",
+      "url": "https://www.worldwildlife.org/species/giant-panda",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/0/0f/Grosser_Panda.JPG"
+    },
+    {
+      "id": "c25",
+      "title": "大熊猫住在哪？",
+      "summary": "主要栖息在中国中部山区。",
+      "tag": "动物科普",
+      "videoLabel": "图文",
+      "accent": "#6DD3CE",
+      "type": "article",
+      "source": "WWF",
+      "url": "https://www.worldwildlife.org/species/giant-panda",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/0/0f/Grosser_Panda.JPG"
+    },
+    {
+      "id": "c26",
+      "title": "海豚是鱼吗？",
+      "summary": "海豚是海洋哺乳动物，需要呼吸空气。",
+      "tag": "动物科普",
+      "videoLabel": "图文",
+      "accent": "#48CAE4",
+      "type": "article",
+      "source": "NOAA",
+      "url": "https://oceanservice.noaa.gov/facts/dolphin.html",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/0/0f/Grosser_Panda.JPG"
+    },
+    {
+      "id": "c27",
+      "title": "企鹅会飞吗？",
+      "summary": "企鹅不会飞，但游泳很厉害。",
+      "tag": "动物趣闻",
+      "videoLabel": "图文",
+      "accent": "#90E0EF",
+      "type": "article",
+      "source": "National Geographic",
+      "url": "https://www.nationalgeographic.com/animals/birds/facts/penguins-1",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/0/0f/Grosser_Panda.JPG"
+    },
+    {
+      "id": "c28",
+      "title": "企鹅主要生活在哪？",
+      "summary": "多数企鹅生活在南半球。",
+      "tag": "动物趣闻",
+      "videoLabel": "图文",
+      "accent": "#90E0EF",
+      "type": "article",
+      "source": "National Geographic",
+      "url": "https://www.nationalgeographic.com/animals/birds/facts/penguins-1",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/0/0f/Grosser_Panda.JPG"
+    },
+    {
+      "id": "c29",
+      "title": "蜜蜂有什么作用？",
+      "summary": "蜜蜂帮助植物授粉，支持农业生产。",
+      "tag": "动物科普",
+      "videoLabel": "图文",
+      "accent": "#F4A261",
+      "type": "article",
+      "source": "USDA",
+      "url": "https://www.usda.gov/pollinators",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/0/0f/Grosser_Panda.JPG"
+    },
+    {
+      "id": "c30",
+      "title": "授粉为什么重要？",
+      "summary": "很多作物依赖传粉才能结果。",
+      "tag": "动物科普",
+      "videoLabel": "图文",
+      "accent": "#F4A261",
+      "type": "article",
+      "source": "USDA",
+      "url": "https://www.usda.gov/pollinators",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/0/0f/Grosser_Panda.JPG"
+    }
+  ],
+  "questions": [
+    {
+      "id": "q001",
+      "topic": "历史",
+      "title": "四大发明不包括以下哪项？",
+      "options": [
+        "A. 纸",
+        "B. 火药",
+        "C. 望远镜",
+        "D. 指南针"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q002",
+      "topic": "历史",
+      "title": "秦始皇统一的是？",
+      "options": [
+        "A. 文字",
+        "B. 货币",
+        "C. 车轨",
+        "D. 以上都是"
+      ],
+      "answer": "D"
+    },
+    {
+      "id": "q003",
+      "topic": "历史",
+      "title": "唐朝的都城是？",
+      "options": [
+        "A. 洛阳",
+        "B. 长安",
+        "C. 开封",
+        "D. 南京"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q004",
+      "topic": "历史",
+      "title": "科举制度主要用于？",
+      "options": [
+        "A. 贸易",
+        "B. 选官",
+        "C. 军事",
+        "D. 祭祀"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q005",
+      "topic": "历史",
+      "title": "丝绸之路主要连接？",
+      "options": [
+        "A. 东亚与欧洲",
+        "B. 南极与北极",
+        "C. 非洲与美洲",
+        "D. 大洋洲与亚洲"
+      ],
+      "answer": "A"
+    },
+    {
+      "id": "q006",
+      "topic": "历史",
+      "title": "四大发明不包括以下哪项？",
+      "options": [
+        "A. 纸",
+        "B. 火药",
+        "C. 望远镜",
+        "D. 指南针"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q007",
+      "topic": "历史",
+      "title": "秦始皇统一的是？",
+      "options": [
+        "A. 文字",
+        "B. 货币",
+        "C. 车轨",
+        "D. 以上都是"
+      ],
+      "answer": "D"
+    },
+    {
+      "id": "q008",
+      "topic": "历史",
+      "title": "唐朝的都城是？",
+      "options": [
+        "A. 洛阳",
+        "B. 长安",
+        "C. 开封",
+        "D. 南京"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q009",
+      "topic": "历史",
+      "title": "科举制度主要用于？",
+      "options": [
+        "A. 贸易",
+        "B. 选官",
+        "C. 军事",
+        "D. 祭祀"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q010",
+      "topic": "历史",
+      "title": "丝绸之路主要连接？",
+      "options": [
+        "A. 东亚与欧洲",
+        "B. 南极与北极",
+        "C. 非洲与美洲",
+        "D. 大洋洲与亚洲"
+      ],
+      "answer": "A"
+    },
+    {
+      "id": "q011",
+      "topic": "历史",
+      "title": "四大发明不包括以下哪项？",
+      "options": [
+        "A. 纸",
+        "B. 火药",
+        "C. 望远镜",
+        "D. 指南针"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q012",
+      "topic": "历史",
+      "title": "秦始皇统一的是？",
+      "options": [
+        "A. 文字",
+        "B. 货币",
+        "C. 车轨",
+        "D. 以上都是"
+      ],
+      "answer": "D"
+    },
+    {
+      "id": "q013",
+      "topic": "历史",
+      "title": "唐朝的都城是？",
+      "options": [
+        "A. 洛阳",
+        "B. 长安",
+        "C. 开封",
+        "D. 南京"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q014",
+      "topic": "历史",
+      "title": "科举制度主要用于？",
+      "options": [
+        "A. 贸易",
+        "B. 选官",
+        "C. 军事",
+        "D. 祭祀"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q015",
+      "topic": "历史",
+      "title": "丝绸之路主要连接？",
+      "options": [
+        "A. 东亚与欧洲",
+        "B. 南极与北极",
+        "C. 非洲与美洲",
+        "D. 大洋洲与亚洲"
+      ],
+      "answer": "A"
+    },
+    {
+      "id": "q016",
+      "topic": "历史",
+      "title": "四大发明不包括以下哪项？",
+      "options": [
+        "A. 纸",
+        "B. 火药",
+        "C. 望远镜",
+        "D. 指南针"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q017",
+      "topic": "历史",
+      "title": "秦始皇统一的是？",
+      "options": [
+        "A. 文字",
+        "B. 货币",
+        "C. 车轨",
+        "D. 以上都是"
+      ],
+      "answer": "D"
+    },
+    {
+      "id": "q018",
+      "topic": "历史",
+      "title": "唐朝的都城是？",
+      "options": [
+        "A. 洛阳",
+        "B. 长安",
+        "C. 开封",
+        "D. 南京"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q019",
+      "topic": "历史",
+      "title": "科举制度主要用于？",
+      "options": [
+        "A. 贸易",
+        "B. 选官",
+        "C. 军事",
+        "D. 祭祀"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q020",
+      "topic": "历史",
+      "title": "丝绸之路主要连接？",
+      "options": [
+        "A. 东亚与欧洲",
+        "B. 南极与北极",
+        "C. 非洲与美洲",
+        "D. 大洋洲与亚洲"
+      ],
+      "answer": "A"
+    },
+    {
+      "id": "q021",
+      "topic": "历史",
+      "title": "四大发明不包括以下哪项？",
+      "options": [
+        "A. 纸",
+        "B. 火药",
+        "C. 望远镜",
+        "D. 指南针"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q022",
+      "topic": "历史",
+      "title": "秦始皇统一的是？",
+      "options": [
+        "A. 文字",
+        "B. 货币",
+        "C. 车轨",
+        "D. 以上都是"
+      ],
+      "answer": "D"
+    },
+    {
+      "id": "q023",
+      "topic": "历史",
+      "title": "唐朝的都城是？",
+      "options": [
+        "A. 洛阳",
+        "B. 长安",
+        "C. 开封",
+        "D. 南京"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q024",
+      "topic": "历史",
+      "title": "科举制度主要用于？",
+      "options": [
+        "A. 贸易",
+        "B. 选官",
+        "C. 军事",
+        "D. 祭祀"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q025",
+      "topic": "历史",
+      "title": "丝绸之路主要连接？",
+      "options": [
+        "A. 东亚与欧洲",
+        "B. 南极与北极",
+        "C. 非洲与美洲",
+        "D. 大洋洲与亚洲"
+      ],
+      "answer": "A"
+    },
+    {
+      "id": "q026",
+      "topic": "计算机",
+      "title": "计算机使用的最基础数字体系是？",
+      "options": [
+        "A. 十进制",
+        "B. 二进制",
+        "C. 八进制",
+        "D. 十六进制"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q027",
+      "topic": "计算机",
+      "title": "CPU 的作用是？",
+      "options": [
+        "A. 存储",
+        "B. 运算和控制",
+        "C. 显示",
+        "D. 输入"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q028",
+      "topic": "计算机",
+      "title": "内存的特点是？",
+      "options": [
+        "A. 断电不丢失",
+        "B. 断电丢失",
+        "C. 只读",
+        "D. 永久保存"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q029",
+      "topic": "计算机",
+      "title": "算法可以理解为？",
+      "options": [
+        "A. 电脑零件",
+        "B. 解决问题的步骤",
+        "C. 屏幕",
+        "D. 电源"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q030",
+      "topic": "计算机",
+      "title": "互联网是？",
+      "options": [
+        "A. 一台电脑",
+        "B. 连接网络的总称",
+        "C. 游戏",
+        "D. 软件"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q031",
+      "topic": "计算机",
+      "title": "计算机使用的最基础数字体系是？",
+      "options": [
+        "A. 十进制",
+        "B. 二进制",
+        "C. 八进制",
+        "D. 十六进制"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q032",
+      "topic": "计算机",
+      "title": "CPU 的作用是？",
+      "options": [
+        "A. 存储",
+        "B. 运算和控制",
+        "C. 显示",
+        "D. 输入"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q033",
+      "topic": "计算机",
+      "title": "内存的特点是？",
+      "options": [
+        "A. 断电不丢失",
+        "B. 断电丢失",
+        "C. 只读",
+        "D. 永久保存"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q034",
+      "topic": "计算机",
+      "title": "算法可以理解为？",
+      "options": [
+        "A. 电脑零件",
+        "B. 解决问题的步骤",
+        "C. 屏幕",
+        "D. 电源"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q035",
+      "topic": "计算机",
+      "title": "互联网是？",
+      "options": [
+        "A. 一台电脑",
+        "B. 连接网络的总称",
+        "C. 游戏",
+        "D. 软件"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q036",
+      "topic": "计算机",
+      "title": "计算机使用的最基础数字体系是？",
+      "options": [
+        "A. 十进制",
+        "B. 二进制",
+        "C. 八进制",
+        "D. 十六进制"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q037",
+      "topic": "计算机",
+      "title": "CPU 的作用是？",
+      "options": [
+        "A. 存储",
+        "B. 运算和控制",
+        "C. 显示",
+        "D. 输入"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q038",
+      "topic": "计算机",
+      "title": "内存的特点是？",
+      "options": [
+        "A. 断电不丢失",
+        "B. 断电丢失",
+        "C. 只读",
+        "D. 永久保存"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q039",
+      "topic": "计算机",
+      "title": "算法可以理解为？",
+      "options": [
+        "A. 电脑零件",
+        "B. 解决问题的步骤",
+        "C. 屏幕",
+        "D. 电源"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q040",
+      "topic": "计算机",
+      "title": "互联网是？",
+      "options": [
+        "A. 一台电脑",
+        "B. 连接网络的总称",
+        "C. 游戏",
+        "D. 软件"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q041",
+      "topic": "计算机",
+      "title": "计算机使用的最基础数字体系是？",
+      "options": [
+        "A. 十进制",
+        "B. 二进制",
+        "C. 八进制",
+        "D. 十六进制"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q042",
+      "topic": "计算机",
+      "title": "CPU 的作用是？",
+      "options": [
+        "A. 存储",
+        "B. 运算和控制",
+        "C. 显示",
+        "D. 输入"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q043",
+      "topic": "计算机",
+      "title": "内存的特点是？",
+      "options": [
+        "A. 断电不丢失",
+        "B. 断电丢失",
+        "C. 只读",
+        "D. 永久保存"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q044",
+      "topic": "计算机",
+      "title": "算法可以理解为？",
+      "options": [
+        "A. 电脑零件",
+        "B. 解决问题的步骤",
+        "C. 屏幕",
+        "D. 电源"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q045",
+      "topic": "计算机",
+      "title": "互联网是？",
+      "options": [
+        "A. 一台电脑",
+        "B. 连接网络的总称",
+        "C. 游戏",
+        "D. 软件"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q046",
+      "topic": "计算机",
+      "title": "计算机使用的最基础数字体系是？",
+      "options": [
+        "A. 十进制",
+        "B. 二进制",
+        "C. 八进制",
+        "D. 十六进制"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q047",
+      "topic": "计算机",
+      "title": "CPU 的作用是？",
+      "options": [
+        "A. 存储",
+        "B. 运算和控制",
+        "C. 显示",
+        "D. 输入"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q048",
+      "topic": "计算机",
+      "title": "内存的特点是？",
+      "options": [
+        "A. 断电不丢失",
+        "B. 断电丢失",
+        "C. 只读",
+        "D. 永久保存"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q049",
+      "topic": "计算机",
+      "title": "算法可以理解为？",
+      "options": [
+        "A. 电脑零件",
+        "B. 解决问题的步骤",
+        "C. 屏幕",
+        "D. 电源"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q050",
+      "topic": "计算机",
+      "title": "互联网是？",
+      "options": [
+        "A. 一台电脑",
+        "B. 连接网络的总称",
+        "C. 游戏",
+        "D. 软件"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q051",
+      "topic": "篮球",
+      "title": "篮球比赛一队上场人数是？",
+      "options": [
+        "A. 3",
+        "B. 4",
+        "C. 5",
+        "D. 6"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q052",
+      "topic": "篮球",
+      "title": "进攻时间限制为？",
+      "options": [
+        "A. 12秒",
+        "B. 24秒",
+        "C. 30秒",
+        "D. 60秒"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q053",
+      "topic": "篮球",
+      "title": "三分球得分是？",
+      "options": [
+        "A. 1分",
+        "B. 2分",
+        "C. 3分",
+        "D. 4分"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q054",
+      "topic": "篮球",
+      "title": "罚球得分是？",
+      "options": [
+        "A. 1分",
+        "B. 2分",
+        "C. 3分",
+        "D. 0分"
+      ],
+      "answer": "A"
+    },
+    {
+      "id": "q055",
+      "topic": "篮球",
+      "title": "裁判的作用是？",
+      "options": [
+        "A. 记分",
+        "B. 组织比赛",
+        "C. 保证公平",
+        "D. 加油"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q056",
+      "topic": "篮球",
+      "title": "篮球比赛一队上场人数是？",
+      "options": [
+        "A. 3",
+        "B. 4",
+        "C. 5",
+        "D. 6"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q057",
+      "topic": "篮球",
+      "title": "进攻时间限制为？",
+      "options": [
+        "A. 12秒",
+        "B. 24秒",
+        "C. 30秒",
+        "D. 60秒"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q058",
+      "topic": "篮球",
+      "title": "三分球得分是？",
+      "options": [
+        "A. 1分",
+        "B. 2分",
+        "C. 3分",
+        "D. 4分"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q059",
+      "topic": "篮球",
+      "title": "罚球得分是？",
+      "options": [
+        "A. 1分",
+        "B. 2分",
+        "C. 3分",
+        "D. 0分"
+      ],
+      "answer": "A"
+    },
+    {
+      "id": "q060",
+      "topic": "篮球",
+      "title": "裁判的作用是？",
+      "options": [
+        "A. 记分",
+        "B. 组织比赛",
+        "C. 保证公平",
+        "D. 加油"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q061",
+      "topic": "篮球",
+      "title": "篮球比赛一队上场人数是？",
+      "options": [
+        "A. 3",
+        "B. 4",
+        "C. 5",
+        "D. 6"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q062",
+      "topic": "篮球",
+      "title": "进攻时间限制为？",
+      "options": [
+        "A. 12秒",
+        "B. 24秒",
+        "C. 30秒",
+        "D. 60秒"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q063",
+      "topic": "篮球",
+      "title": "三分球得分是？",
+      "options": [
+        "A. 1分",
+        "B. 2分",
+        "C. 3分",
+        "D. 4分"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q064",
+      "topic": "篮球",
+      "title": "罚球得分是？",
+      "options": [
+        "A. 1分",
+        "B. 2分",
+        "C. 3分",
+        "D. 0分"
+      ],
+      "answer": "A"
+    },
+    {
+      "id": "q065",
+      "topic": "篮球",
+      "title": "裁判的作用是？",
+      "options": [
+        "A. 记分",
+        "B. 组织比赛",
+        "C. 保证公平",
+        "D. 加油"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q066",
+      "topic": "篮球",
+      "title": "篮球比赛一队上场人数是？",
+      "options": [
+        "A. 3",
+        "B. 4",
+        "C. 5",
+        "D. 6"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q067",
+      "topic": "篮球",
+      "title": "进攻时间限制为？",
+      "options": [
+        "A. 12秒",
+        "B. 24秒",
+        "C. 30秒",
+        "D. 60秒"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q068",
+      "topic": "篮球",
+      "title": "三分球得分是？",
+      "options": [
+        "A. 1分",
+        "B. 2分",
+        "C. 3分",
+        "D. 4分"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q069",
+      "topic": "篮球",
+      "title": "罚球得分是？",
+      "options": [
+        "A. 1分",
+        "B. 2分",
+        "C. 3分",
+        "D. 0分"
+      ],
+      "answer": "A"
+    },
+    {
+      "id": "q070",
+      "topic": "篮球",
+      "title": "裁判的作用是？",
+      "options": [
+        "A. 记分",
+        "B. 组织比赛",
+        "C. 保证公平",
+        "D. 加油"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q071",
+      "topic": "篮球",
+      "title": "篮球比赛一队上场人数是？",
+      "options": [
+        "A. 3",
+        "B. 4",
+        "C. 5",
+        "D. 6"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q072",
+      "topic": "篮球",
+      "title": "进攻时间限制为？",
+      "options": [
+        "A. 12秒",
+        "B. 24秒",
+        "C. 30秒",
+        "D. 60秒"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q073",
+      "topic": "篮球",
+      "title": "三分球得分是？",
+      "options": [
+        "A. 1分",
+        "B. 2分",
+        "C. 3分",
+        "D. 4分"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q074",
+      "topic": "篮球",
+      "title": "罚球得分是？",
+      "options": [
+        "A. 1分",
+        "B. 2分",
+        "C. 3分",
+        "D. 0分"
+      ],
+      "answer": "A"
+    },
+    {
+      "id": "q075",
+      "topic": "篮球",
+      "title": "裁判的作用是？",
+      "options": [
+        "A. 记分",
+        "B. 组织比赛",
+        "C. 保证公平",
+        "D. 加油"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q076",
+      "topic": "动物",
+      "title": "企鹅主要生活在？",
+      "options": [
+        "A. 热带",
+        "B. 沙漠",
+        "C. 寒冷地区",
+        "D. 森林"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q077",
+      "topic": "动物",
+      "title": "熊猫主要食物是？",
+      "options": [
+        "A. 鱼",
+        "B. 竹子",
+        "C. 肉",
+        "D. 水果"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q078",
+      "topic": "动物",
+      "title": "海豚是？",
+      "options": [
+        "A. 鱼",
+        "B. 哺乳动物",
+        "C. 鸟",
+        "D. 昆虫"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q079",
+      "topic": "动物",
+      "title": "蜜蜂的作用之一是？",
+      "options": [
+        "A. 传粉",
+        "B. 捕猎",
+        "C. 织网",
+        "D. 伪装"
+      ],
+      "answer": "A"
+    },
+    {
+      "id": "q080",
+      "topic": "动物",
+      "title": "狼群合作主要为了？",
+      "options": [
+        "A. 玩耍",
+        "B. 取暖",
+        "C. 觅食与生存",
+        "D. 发声"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q081",
+      "topic": "动物",
+      "title": "企鹅主要生活在？",
+      "options": [
+        "A. 热带",
+        "B. 沙漠",
+        "C. 寒冷地区",
+        "D. 森林"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q082",
+      "topic": "动物",
+      "title": "熊猫主要食物是？",
+      "options": [
+        "A. 鱼",
+        "B. 竹子",
+        "C. 肉",
+        "D. 水果"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q083",
+      "topic": "动物",
+      "title": "海豚是？",
+      "options": [
+        "A. 鱼",
+        "B. 哺乳动物",
+        "C. 鸟",
+        "D. 昆虫"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q084",
+      "topic": "动物",
+      "title": "蜜蜂的作用之一是？",
+      "options": [
+        "A. 传粉",
+        "B. 捕猎",
+        "C. 织网",
+        "D. 伪装"
+      ],
+      "answer": "A"
+    },
+    {
+      "id": "q085",
+      "topic": "动物",
+      "title": "狼群合作主要为了？",
+      "options": [
+        "A. 玩耍",
+        "B. 取暖",
+        "C. 觅食与生存",
+        "D. 发声"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q086",
+      "topic": "动物",
+      "title": "企鹅主要生活在？",
+      "options": [
+        "A. 热带",
+        "B. 沙漠",
+        "C. 寒冷地区",
+        "D. 森林"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q087",
+      "topic": "动物",
+      "title": "熊猫主要食物是？",
+      "options": [
+        "A. 鱼",
+        "B. 竹子",
+        "C. 肉",
+        "D. 水果"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q088",
+      "topic": "动物",
+      "title": "海豚是？",
+      "options": [
+        "A. 鱼",
+        "B. 哺乳动物",
+        "C. 鸟",
+        "D. 昆虫"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q089",
+      "topic": "动物",
+      "title": "蜜蜂的作用之一是？",
+      "options": [
+        "A. 传粉",
+        "B. 捕猎",
+        "C. 织网",
+        "D. 伪装"
+      ],
+      "answer": "A"
+    },
+    {
+      "id": "q090",
+      "topic": "动物",
+      "title": "狼群合作主要为了？",
+      "options": [
+        "A. 玩耍",
+        "B. 取暖",
+        "C. 觅食与生存",
+        "D. 发声"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q091",
+      "topic": "动物",
+      "title": "企鹅主要生活在？",
+      "options": [
+        "A. 热带",
+        "B. 沙漠",
+        "C. 寒冷地区",
+        "D. 森林"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q092",
+      "topic": "动物",
+      "title": "熊猫主要食物是？",
+      "options": [
+        "A. 鱼",
+        "B. 竹子",
+        "C. 肉",
+        "D. 水果"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q093",
+      "topic": "动物",
+      "title": "海豚是？",
+      "options": [
+        "A. 鱼",
+        "B. 哺乳动物",
+        "C. 鸟",
+        "D. 昆虫"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q094",
+      "topic": "动物",
+      "title": "蜜蜂的作用之一是？",
+      "options": [
+        "A. 传粉",
+        "B. 捕猎",
+        "C. 织网",
+        "D. 伪装"
+      ],
+      "answer": "A"
+    },
+    {
+      "id": "q095",
+      "topic": "动物",
+      "title": "狼群合作主要为了？",
+      "options": [
+        "A. 玩耍",
+        "B. 取暖",
+        "C. 觅食与生存",
+        "D. 发声"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q096",
+      "topic": "动物",
+      "title": "企鹅主要生活在？",
+      "options": [
+        "A. 热带",
+        "B. 沙漠",
+        "C. 寒冷地区",
+        "D. 森林"
+      ],
+      "answer": "C"
+    },
+    {
+      "id": "q097",
+      "topic": "动物",
+      "title": "熊猫主要食物是？",
+      "options": [
+        "A. 鱼",
+        "B. 竹子",
+        "C. 肉",
+        "D. 水果"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q098",
+      "topic": "动物",
+      "title": "海豚是？",
+      "options": [
+        "A. 鱼",
+        "B. 哺乳动物",
+        "C. 鸟",
+        "D. 昆虫"
+      ],
+      "answer": "B"
+    },
+    {
+      "id": "q099",
+      "topic": "动物",
+      "title": "蜜蜂的作用之一是？",
+      "options": [
+        "A. 传粉",
+        "B. 捕猎",
+        "C. 织网",
+        "D. 伪装"
+      ],
+      "answer": "A"
+    },
+    {
+      "id": "q100",
+      "topic": "动物",
+      "title": "狼群合作主要为了？",
+      "options": [
+        "A. 玩耍",
+        "B. 取暖",
+        "C. 觅食与生存",
+        "D. 发声"
+      ],
+      "answer": "C"
+    }
+  ],
+  "achievements": [
+    {
+      "id": "a1",
+      "name": "闪亮新星"
+    },
+    {
+      "id": "a2",
+      "name": "连胜三场"
+    },
+    {
+      "id": "a3",
+      "name": "探索家"
+    },
+    {
+      "id": "a4",
+      "name": "观察大师"
+    },
+    {
+      "id": "a5",
+      "name": "历史小通"
+    },
+    {
+      "id": "a6",
+      "name": "篮球达人"
+    }
+  ]
+}
