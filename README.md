@@ -15,10 +15,56 @@
 - 本地存储（shared_preferences）
 - 外链打开（url_launcher）
 
+## 环境设置
+
+### 安装 Flutter
+
+**方法 1: 使用 Homebrew（推荐）**
+```bash
+brew install --cask flutter
+```
+
+**方法 2: 使用安装脚本**
+```bash
+chmod +x scripts/setup_flutter.sh
+./scripts/setup_flutter.sh
+```
+
+**方法 3: 手动安装**
+```bash
+cd ~
+git clone https://github.com/flutter/flutter.git -b stable
+export PATH="$PATH:$HOME/flutter/bin"
+```
+
+详细说明请查看 [Flutter 环境设置指南](docs/FLUTTER_SETUP.md)
+
+### 验证安装
+```bash
+flutter --version
+flutter doctor
+```
+
 ## 运行
+
+### 1. 安装项目依赖
 ```sh
 flutter pub get
+```
+
+### 2. 运行项目
+```sh
+# Web 平台（推荐用于快速开发）
 flutter run -d chrome
+
+# iOS 平台（需要 Xcode）
+flutter run -d ios
+
+# Android 平台（需要 Android Studio）
+flutter run -d android
+
+# 查看所有可用设备
+flutter devices
 ```
 
 ## 说明
