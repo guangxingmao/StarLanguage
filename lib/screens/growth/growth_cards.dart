@@ -1,8 +1,28 @@
 import 'package:flutter/material.dart';
 
+import '../../data/growth_data.dart';
+
+/// iconKey（后端）与 Flutter IconData 的映射
+IconData _iconForKey(String key) {
+  switch (key) {
+    case 'school':
+      return Icons.school_rounded;
+    case 'video':
+      return Icons.play_circle_outline_rounded;
+    case 'arena':
+      return Icons.emoji_events_rounded;
+    case 'forum':
+      return Icons.forum_rounded;
+    default:
+      return Icons.check_circle_outline_rounded;
+  }
+}
+
 /// 每日提醒条
 class ReminderBar extends StatelessWidget {
-  const ReminderBar({super.key});
+  const ReminderBar({super.key, required this.data});
+
+  final ReminderData data;
 
   @override
   Widget build(BuildContext context) {
@@ -55,20 +75,23 @@ class ReminderBar extends StatelessWidget {
                     BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2)),
                   ],
                 ),
-                child: const Text('20:00', style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFFFF9F1C), fontSize: 15)),
+                child: Text(
+                  data.reminderTime,
+                  style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFFFF9F1C), fontSize: 15),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 14),
-          const Text(
-            '今天还差 3 项打卡，加油！',
-            style: TextStyle(color: Color(0xFF6F6B60), fontSize: 14, height: 1.35),
+          Text(
+            data.message,
+            style: const TextStyle(color: Color(0xFF6F6B60), fontSize: 14, height: 1.35),
           ),
           const SizedBox(height: 12),
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: LinearProgressIndicator(
-              value: 0.25,
+              value: data.progress.clamp(0.0, 1.0),
               minHeight: 10,
               backgroundColor: const Color(0xFFFFEAC0),
               valueColor: const AlwaysStoppedAnimation<Color>(reminderColor),
@@ -82,7 +105,13 @@ class ReminderBar extends StatelessWidget {
 
 /// 成长数据：连续天数、正确率、徽章
 class GrowthStats extends StatelessWidget {
-  const GrowthStats({super.key});
+  const GrowthStats({super.key, required this.data});
+
+  final GrowthStatsData data;
+
+  static const _streakColor = Color(0xFFE65C4D);
+  static const _accuracyColor = Color(0xFF2EC4B6);
+  static const _badgeColor = Color(0xFFFFB84D);
 
   @override
   Widget build(BuildContext context) {
@@ -105,10 +134,31 @@ class GrowthStats extends StatelessWidget {
         ],
       ),
       child: Row(
-        children: const [
-          Expanded(child: _StatItem(icon: Icons.local_fire_department_rounded, value: '7', label: '连续天数', color: Color(0xFFE65C4D))),
-          Expanded(child: _StatItem(icon: Icons.track_changes_rounded, value: '86%', label: '正确率', color: Color(0xFF2EC4B6))),
-          Expanded(child: _StatItem(icon: Icons.emoji_events_rounded, value: '9', label: '徽章', color: Color(0xFFFFB84D))),
+        children: [
+          Expanded(
+            child: _StatItem(
+              icon: Icons.local_fire_department_rounded,
+              value: '${data.streakDays}',
+              label: '连续天数',
+              color: _streakColor,
+            ),
+          ),
+          Expanded(
+            child: _StatItem(
+              icon: Icons.track_changes_rounded,
+              value: '${data.accuracyPercent}%',
+              label: '正确率',
+              color: _accuracyColor,
+            ),
+          ),
+          Expanded(
+            child: _StatItem(
+              icon: Icons.emoji_events_rounded,
+              value: '${data.badgeCount}',
+              label: '徽章',
+              color: _badgeColor,
+            ),
+          ),
         ],
       ),
     );
@@ -149,19 +199,14 @@ class _StatItem extends StatelessWidget {
 
 /// 每日任务打卡卡片
 class DailyTasksCard extends StatelessWidget {
-  const DailyTasksCard({super.key});
+  const DailyTasksCard({super.key, required this.tasks});
 
-  static const _tasks = [
-    (icon: Icons.school_rounded, label: '学习一个新知识点'),
-    (icon: Icons.play_circle_outline_rounded, label: '观看一个视频或图文'),
-    (icon: Icons.emoji_events_rounded, label: '参与一次擂台'),
-    (icon: Icons.forum_rounded, label: '参与一次社群讨论'),
-  ];
+  final List<DailyTask> tasks;
 
   @override
   Widget build(BuildContext context) {
-    const completedCount = 1;
-    final progress = completedCount / _tasks.length;
+    final completedCount = tasks.where((t) => t.completed).length;
+    final progress = tasks.isEmpty ? 0.0 : completedCount / tasks.length;
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -203,7 +248,7 @@ class DailyTasksCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Text(
-                  '$completedCount/${_tasks.length}',
+                  '$completedCount/${tasks.length}',
                   style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFFFF9F1C), fontSize: 15),
                 ),
               ),
@@ -220,9 +265,9 @@ class DailyTasksCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          ...List.generate(_tasks.length, (i) {
-            final task = _tasks[i];
-            final done = i < completedCount;
+          ...tasks.map((task) {
+            final done = task.completed;
+            final icon = _iconForKey(task.iconKey);
             return Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Row(
@@ -235,7 +280,7 @@ class DailyTasksCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(
-                      task.icon,
+                      icon,
                       size: 20,
                       color: done ? Colors.white : const Color(0xFF9A8F77),
                     ),
@@ -265,9 +310,9 @@ class DailyTasksCard extends StatelessWidget {
 
 /// 今日学习推荐卡片
 class TodayLearningCard extends StatelessWidget {
-  const TodayLearningCard({super.key, required this.title});
+  const TodayLearningCard({super.key, required this.data});
 
-  final String title;
+  final TodayLearningData data;
 
   @override
   Widget build(BuildContext context) {
@@ -276,7 +321,7 @@ class TodayLearningCard extends StatelessWidget {
       child: InkWell(
         onTap: () {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('去学习：$title'), behavior: SnackBarBehavior.floating),
+            SnackBar(content: Text('去学习：${data.title}'), behavior: SnackBarBehavior.floating),
           );
         },
         borderRadius: BorderRadius.circular(22),
@@ -331,7 +376,7 @@ class TodayLearningCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      title,
+                      data.title,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w600,
                             color: const Color(0xFF2B2B2B),
@@ -358,29 +403,27 @@ class TodayLearningCard extends StatelessWidget {
   }
 }
 
-/// 成长数据双卡行（连续学习 / 本周挑战）
+/// 成长数据双卡行（连续学习 / 本周挑战等）
 class GrowthCardRow extends StatelessWidget {
-  const GrowthCardRow({super.key});
+  const GrowthCardRow({super.key, required this.cards});
+
+  final List<GrowthCardItem> cards;
 
   @override
   Widget build(BuildContext context) {
+    if (cards.isEmpty) return const SizedBox.shrink();
     return Row(
-      children: const [
-        Expanded(
-          child: _GrowthCard(
-            title: '连续学习',
-            value: '7 天',
-            color: Color(0xFFFFD166),
+      children: [
+        for (var i = 0; i < cards.length; i++) ...[
+          if (i > 0) const SizedBox(width: 12),
+          Expanded(
+            child: _GrowthCard(
+              title: cards[i].title,
+              value: cards[i].value,
+              color: cards[i].color,
+            ),
           ),
-        ),
-        SizedBox(width: 12),
-        Expanded(
-          child: _GrowthCard(
-            title: '本周挑战',
-            value: '3 / 5',
-            color: Color(0xFFB8F1E0),
-          ),
-        ),
+        ],
       ],
     );
   }

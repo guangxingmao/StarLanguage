@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../data/demo_data.dart';
+import '../../data/growth_data.dart';
 import '../../data/profile.dart';
 import '../../widgets/reveal.dart';
 import '../../widgets/starry_background.dart';
@@ -8,7 +8,7 @@ import 'growth_cards.dart';
 import 'profile_card.dart';
 import 'profile_page.dart';
 
-/// 成长页：我的、每日提醒、打卡、今日学习
+/// 成长页：我的、每日提醒、打卡、今日学习（数据来自 [GrowthPageData]，可后端接口填充）
 class GrowthPage extends StatelessWidget {
   const GrowthPage({super.key});
 
@@ -18,10 +18,10 @@ class GrowthPage extends StatelessWidget {
       children: [
         const StarryBackground(),
         SafeArea(
-          child: FutureBuilder<DemoData>(
-            future: demoDataFuture,
+          child: FutureBuilder<GrowthPageData>(
+            future: growthDataFuture,
             builder: (context, snapshot) {
-              final data = snapshot.data ?? DemoData.fallback();
+              final data = snapshot.data ?? GrowthPageData.fallback();
               return ListView(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
                 children: [
@@ -73,30 +73,37 @@ class GrowthPage extends StatelessWidget {
                         ),
                   ),
                   const SizedBox(height: 12),
-                  const Reveal(
+                  Reveal(
                     delay: 60,
-                    child: ReminderBar(),
+                    child: ReminderBar(data: data.reminder),
                   ),
                   const SizedBox(height: 18),
-                  const Reveal(
+                  Reveal(
                     delay: 120,
-                    child: GrowthStats(),
+                    child: GrowthStats(data: data.stats),
                   ),
                   const SizedBox(height: 18),
                   Text('每日任务', style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 12),
-                  const Reveal(
+                  Reveal(
                     delay: 180,
-                    child: DailyTasksCard(),
+                    child: DailyTasksCard(tasks: data.dailyTasks),
                   ),
+                  if (data.growthCards != null && data.growthCards!.isNotEmpty) ...[
+                    const SizedBox(height: 18),
+                    Text('学习与挑战', style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 12),
+                    Reveal(
+                      delay: 200,
+                      child: GrowthCardRow(cards: data.growthCards!),
+                    ),
+                  ],
                   const SizedBox(height: 20),
                   Text('今日学习', style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 12),
                   Reveal(
                     delay: 220,
-                    child: TodayLearningCard(
-                      title: data.contents.isNotEmpty ? data.contents.first.title : '还没有学习内容',
-                    ),
+                    child: TodayLearningCard(data: data.todayLearning),
                   ),
                 ],
               );
