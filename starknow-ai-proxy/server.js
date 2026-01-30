@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
 const readline = require('readline');
+const crypto = require('crypto');
 const tencentcloud = require('tencentcloud-sdk-nodejs');
 const http = require('http');
 const { WebSocketServer } = require('ws');
@@ -10,6 +11,12 @@ const { WebSocketServer } = require('ws');
 const HunyuanClient = tencentcloud.hunyuan.v20230901.Client;
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3001;
 const REGION = process.env.TENCENT_REGION || 'ap-guangzhou';
+
+// ---------- 认证与用户（内存存储，Demo 用） ----------
+const CODE_TTL_MS = 5 * 60 * 1000; // 5 分钟
+const codes = new Map(); // phone -> { code, expiresAt }
+const tokens = new Map(); // token -> { phone, createdAt }
+const users = new Map(); // phone -> { phoneNumber, name, avatarIndex, avatarBase64 }
 
 function promptSecret(label) {
   const rl = readline.createInterface({
@@ -25,10 +32,10 @@ function promptSecret(label) {
 }
 
 async function initClient() {
-  const secretId = process.env.TENCENT_SECRET_ID || await promptSecret('SecretId');
-  const secretKey = process.env.TENCENT_SECRET_KEY || await promptSecret('SecretKey');
+  const secretId = process.env.TENCENT_SECRET_ID;
+  const secretKey = process.env.TENCENT_SECRET_KEY;
   if (!secretId || !secretKey) {
-    throw new Error('SecretId/SecretKey is required.');
+    return null;
   }
   return new HunyuanClient({
     credential: { secretId, secretKey },
@@ -75,8 +82,21 @@ function buildVisionMessage({ question, imageBase64, imageMime }) {
   ];
 }
 
+function requireAuth(req, res, next) {
+  const auth = req.headers.authorization;
+  const token = auth && auth.startsWith('Bearer ') ? auth.slice(7).trim() : null;
+  if (!token || !tokens.has(token)) {
+    return res.status(401).json({ error: 'unauthorized', message: '请先登录' });
+  }
+  req.auth = tokens.get(token);
+  next();
+}
+
 async function main() {
   const client = await initClient();
+  if (!client) {
+    console.log('Tencent credentials not set: AI chat disabled. Auth and user API only.');
+  }
 
   const app = express();
   app.use(cors());
@@ -84,10 +104,106 @@ async function main() {
   app.use(morgan('dev'));
 
   app.get('/health', (_req, res) => {
-    res.json({ ok: true, service: 'starknow-ai-proxy' });
+    res.json({ ok: true, service: 'starknow-ai-proxy', aiEnabled: !!client });
+  });
+
+  // ---------- 认证 API ----------
+  app.post('/auth/send-code', (req, res) => {
+    const phone = (req.body && req.body.phone) ? String(req.body.phone).trim() : '';
+    if (!/^1[3-9]\d{9}$/.test(phone)) {
+      return res.status(400).json({ error: 'invalid_phone', message: '请输入正确的11位手机号' });
+    }
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    codes.set(phone, { code, expiresAt: Date.now() + CODE_TTL_MS });
+    console.log(`[auth] send-code ${phone} -> ${code} (demo)`);
+    res.json({ ok: true, demoCode: code });
+  });
+
+  app.post('/auth/verify', (req, res) => {
+    const phone = (req.body && req.body.phone) ? String(req.body.phone).trim() : '';
+    const code = (req.body && req.body.code) ? String(req.body.code).trim() : '';
+    if (!/^1[3-9]\d{9}$/.test(phone)) {
+      return res.status(400).json({ error: 'invalid_phone', message: '请输入正确的11位手机号' });
+    }
+    if (!/^\d{6}$/.test(code)) {
+      return res.status(400).json({ error: 'invalid_code', message: '请输入6位数字验证码' });
+    }
+    const entry = codes.get(phone);
+    if (!entry || entry.expiresAt < Date.now()) {
+      return res.status(400).json({ error: 'code_expired', message: '验证码已过期，请重新获取' });
+    }
+    if (entry.code !== code) {
+      return res.status(400).json({ error: 'invalid_code', message: '验证码错误' });
+    }
+    codes.delete(phone);
+
+    let user = users.get(phone);
+    if (!user) {
+      user = {
+        phoneNumber: phone,
+        name: '星知小探险家',
+        avatarIndex: 0,
+        avatarBase64: null,
+      };
+      users.set(phone, user);
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    tokens.set(token, { phone, createdAt: Date.now() });
+    console.log(`[auth] verify ok ${phone}`);
+    res.json({
+      ok: true,
+      token,
+      user: {
+        phoneNumber: user.phoneNumber,
+        name: user.name,
+        avatarIndex: user.avatarIndex,
+        avatarBase64: user.avatarBase64,
+      },
+    });
+  });
+
+  // ---------- 用户 API ----------
+  app.get('/user/me', requireAuth, (req, res) => {
+    const { phone } = req.auth;
+    const user = users.get(phone);
+    if (!user) {
+      return res.status(404).json({ error: 'user_not_found' });
+    }
+    res.json({
+      phoneNumber: user.phoneNumber,
+      name: user.name,
+      avatarIndex: user.avatarIndex,
+      avatarBase64: user.avatarBase64,
+    });
+  });
+
+  app.patch('/user/me', requireAuth, (req, res) => {
+    const { phone } = req.auth;
+    const user = users.get(phone);
+    if (!user) {
+      return res.status(404).json({ error: 'user_not_found' });
+    }
+    const body = req.body || {};
+    if (body.name !== undefined) user.name = String(body.name);
+    if (body.avatarIndex !== undefined) user.avatarIndex = Number(body.avatarIndex) || 0;
+    if (body.avatarBase64 !== undefined) user.avatarBase64 = body.avatarBase64 === null ? null : String(body.avatarBase64);
+    if (body.phoneNumber !== undefined) user.phoneNumber = String(body.phoneNumber);
+    res.json({
+      phoneNumber: user.phoneNumber,
+      name: user.name,
+      avatarIndex: user.avatarIndex,
+      avatarBase64: user.avatarBase64,
+    });
   });
 
   app.post('/chat', async (req, res) => {
+    if (!client) {
+      return res.status(503).json({
+        error: 'ai_disabled',
+        message: '未配置腾讯云密钥，AI 对话不可用。请设置 TENCENT_SECRET_ID / TENCENT_SECRET_KEY 或启动时输入。',
+      });
+    }
     try {
       const {
         messages,
