@@ -21,13 +21,13 @@ class _ArenaPageState extends State<ArenaPage> {
   String _selectedTopic = '全部';
   String _selectedSubtopic = '全部';
 
-  List<LeaderboardEntry> _buildPersonalLeaderboard(int yourScore) {
+  List<LeaderboardEntry> _buildPersonalLeaderboard(
+    int yourScore,
+    List<LeaderboardEntry> template,
+  ) {
     final entries = [
       LeaderboardEntry(rank: 0, name: '你', score: yourScore),
-      const LeaderboardEntry(rank: 0, name: '小星星', score: 1740),
-      const LeaderboardEntry(rank: 0, name: '光速答题王', score: 1695),
-      const LeaderboardEntry(rank: 0, name: '跃迁少年', score: 1580),
-      const LeaderboardEntry(rank: 0, name: '知识火箭', score: 1470),
+      ...template.map((e) => LeaderboardEntry(rank: 0, name: e.name, score: e.score)),
     ];
     entries.sort((a, b) => b.score.compareTo(a.score));
     for (var i = 0; i < entries.length; i++) {
@@ -42,10 +42,15 @@ class _ArenaPageState extends State<ArenaPage> {
       children: [
         const StarryBackground(),
         SafeArea(
-          child: FutureBuilder<DemoData>(
-            future: demoDataFuture,
+          child: FutureBuilder<List<dynamic>>(
+            future: Future.wait([demoDataFuture, arenaPageDataFuture]),
             builder: (context, snapshot) {
-              final data = snapshot.data ?? DemoData.fallback();
+              final data = snapshot.hasData
+                  ? (snapshot.data![0] as DemoData)
+                  : DemoData.fallback();
+              final arenaData = snapshot.hasData
+                  ? (snapshot.data![1] as ArenaPageData)
+                  : ArenaPageData.fallback();
               final topics = ['全部', ...data.topics.map((t) => t.name)];
               final subTopics = _subTopicsFor(data, _selectedTopic);
               return ValueListenableBuilder<ArenaStats>(
@@ -137,17 +142,11 @@ class _ArenaPageState extends State<ArenaPage> {
                       const SizedBox(height: 20),
                       Text('排行榜', style: Theme.of(context).textTheme.titleLarge),
                       const SizedBox(height: 12),
-                      const Reveal(
+                      Reveal(
                         delay: 140,
                         child: LeaderboardCard(
                           title: '在线 PK 排行',
-                          entries: [
-                            LeaderboardEntry(rank: 1, name: '星知战神', score: 2350),
-                            LeaderboardEntry(rank: 2, name: '小小挑战王', score: 2190),
-                            LeaderboardEntry(rank: 3, name: '知识飞船', score: 2045),
-                            LeaderboardEntry(rank: 4, name: '星际飞手', score: 1980),
-                            LeaderboardEntry(rank: 5, name: '闪电回答', score: 1920),
-                          ],
+                          entries: arenaData.pkLeaderboard,
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -155,7 +154,10 @@ class _ArenaPageState extends State<ArenaPage> {
                         delay: 220,
                         child: LeaderboardCard(
                           title: '个人积分排行',
-                          entries: _buildPersonalLeaderboard(stats.totalScore),
+                          entries: _buildPersonalLeaderboard(
+                            stats.totalScore,
+                            arenaData.personalLeaderboardEntries,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 18),
@@ -166,6 +168,7 @@ class _ArenaPageState extends State<ArenaPage> {
                         child: ZoneLeaderboardRow(
                           topics: data.topics.map((t) => t.name).toList(),
                           stats: stats,
+                          zoneLeaderboardTemplate: arenaData.zoneLeaderboardTemplate,
                         ),
                       ),
                     ],
@@ -661,10 +664,16 @@ class LeaderboardCard extends StatelessWidget {
 }
 
 class ZoneLeaderboardRow extends StatelessWidget {
-  const ZoneLeaderboardRow({super.key, required this.topics, required this.stats});
+  const ZoneLeaderboardRow({
+    super.key,
+    required this.topics,
+    required this.stats,
+    required this.zoneLeaderboardTemplate,
+  });
 
   final List<String> topics;
   final ArenaStats stats;
+  final List<LeaderboardEntry> zoneLeaderboardTemplate;
 
   @override
   Widget build(BuildContext context) {
@@ -707,7 +716,7 @@ class ZoneLeaderboardRow extends StatelessWidget {
     return topics.take(4).map((topic) {
       final color = palette[topic] ?? const Color(0xFFFFC857);
       final best = stats.topicBest[topic] ?? 0;
-      final detailEntries = _buildZoneLeaderboard(topic, best);
+      final detailEntries = _buildZoneLeaderboard(best);
       return _ZoneEntry(
         topic: topic,
         leader: detailEntries.first.name,
@@ -718,14 +727,10 @@ class ZoneLeaderboardRow extends StatelessWidget {
     }).toList();
   }
 
-  List<LeaderboardEntry> _buildZoneLeaderboard(String topic, int yourBest) {
-    final base = [
-      const LeaderboardEntry(rank: 0, name: '星河小队', score: 1820),
-      const LeaderboardEntry(rank: 0, name: '晨星', score: 1710),
-      const LeaderboardEntry(rank: 0, name: '飞快答题', score: 1640),
-      const LeaderboardEntry(rank: 0, name: '知识通关', score: 1550),
-      const LeaderboardEntry(rank: 0, name: '探索者', score: 1470),
-    ];
+  List<LeaderboardEntry> _buildZoneLeaderboard(int yourBest) {
+    final base = List<LeaderboardEntry>.from(
+      zoneLeaderboardTemplate.map((e) => LeaderboardEntry(rank: 0, name: e.name, score: e.score)),
+    );
     if (yourBest > 0) {
       base.add(LeaderboardEntry(rank: 0, name: '你', score: yourBest));
     }

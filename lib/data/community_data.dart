@@ -45,6 +45,20 @@ class CommunityPost {
       imageBase64: json['imageBase64'] as String?,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'summary': summary,
+        'content': content,
+        'circle': circle,
+        'author': author,
+        'timeLabel': timeLabel,
+        'likes': likes,
+        'comments': comments,
+        'accent': colorToHex(accent),
+        if (imageBase64 != null) 'imageBase64': imageBase64,
+      };
 }
 
 class CommunityComment {
@@ -57,6 +71,20 @@ class CommunityComment {
   final String author;
   final String content;
   final String timeLabel;
+
+  factory CommunityComment.fromJson(Map<String, dynamic> json) {
+    return CommunityComment(
+      author: json['author'] as String? ?? '',
+      content: json['content'] as String? ?? '',
+      timeLabel: json['timeLabel'] as String? ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'author': author,
+        'content': content,
+        'timeLabel': timeLabel,
+      };
 }
 
 class CommunityStore {
@@ -94,6 +122,13 @@ class CommunityStore {
     if (_seededFromData) return;
     _seededFromData = true;
     posts.value = data;
+  }
+
+  static bool _seededCommentsFromData = false;
+  static void seedCommentsFromData(Map<String, List<CommunityComment>> data) {
+    if (_seededCommentsFromData) return;
+    _seededCommentsFromData = true;
+    comments.value = data;
   }
 
   static void addComment(String postId, String content) {
@@ -203,7 +238,7 @@ class CommunityStore {
     ];
   }
 
-  static Map<String, List<CommunityComment>> _seedComments() {
+  static Map<String, List<CommunityComment>> seedComments() {
     return {
       'p1': const [
         CommunityComment(author: '小星星', content: '我家猫咪每天都要晒太阳！', timeLabel: '1 小时前'),
@@ -214,4 +249,6 @@ class CommunityStore {
       ],
     };
   }
+
+  static Map<String, List<CommunityComment>> _seedComments() => seedComments();
 }

@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../data/demo_data.dart';
+import '../../data/learning_data.dart';
 import '../../widgets/starry_background.dart';
 import '../../widgets/reveal.dart';
 
@@ -50,10 +51,10 @@ class _LearningPageState extends State<LearningPage> {
       children: [
         const StarryBackground(),
         SafeArea(
-          child: FutureBuilder<DemoData>(
-            future: demoDataFuture,
+          child: FutureBuilder<LearningPageData>(
+            future: learningDataFuture,
             builder: (context, snapshot) {
-              final data = snapshot.data ?? DemoData.fallback();
+              final data = snapshot.data ?? LearningPageData.fallback();
               final sources = [
                 '全部',
                 ...{...data.contents.map((c) => c.source)}

@@ -18,6 +18,8 @@ class Topic {
       name: json['name'] as String? ?? '',
     );
   }
+
+  Map<String, dynamic> toJson() => {'id': id, 'name': name};
 }
 
 class ContentItem {
@@ -63,6 +65,20 @@ class ContentItem {
       imageUrl: json['imageUrl'] as String? ?? '',
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'topic': topic,
+        'title': title,
+        'summary': summary,
+        'tag': tag,
+        'videoLabel': videoLabel,
+        'accent': colorToHex(accent),
+        'type': type,
+        'source': source,
+        'url': url,
+        'imageUrl': imageUrl,
+      };
 }
 
 class Question {

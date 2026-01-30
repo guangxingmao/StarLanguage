@@ -5,105 +5,112 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../data/community_data.dart';
-import '../../data/demo_data.dart';
+import '../../data/community_page_data.dart';
 import '../../data/profile.dart';
 import '../../widgets/reveal.dart';
 import '../../widgets/starry_background.dart';
 import '../learning/learning_page.dart';
 
-/// 社群 Tab 页
+/// 社群 Tab 页（数据来自 [CommunityPageData]，可后端接口填充）
 class CommunityPage extends StatelessWidget {
   const CommunityPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final data = DemoData.fallback();
     return Stack(
       children: [
         const StarryBackground(),
         SafeArea(
-          child: ValueListenableBuilder<List<CommunityPost>>(
-            valueListenable: CommunityStore.posts,
-            builder: (context, posts, _) {
-              if (posts.isEmpty && data.communityPosts.isNotEmpty) {
+          child: FutureBuilder<CommunityPageData>(
+            future: communityDataFuture,
+            builder: (context, snapshot) {
+              final pageData = snapshot.data ?? CommunityPageData.fallback();
+              if (snapshot.connectionState == ConnectionState.done && snapshot.hasData) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
-                  CommunityStore.seedFromData(data.communityPosts);
+                  CommunityStore.seedFromData(pageData.posts);
+                  CommunityStore.seedCommentsFromData(pageData.comments);
                 });
               }
-              final hotPosts = posts.take(6).toList();
-              return ListView(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
-                children: [
-                  Row(
+              return ValueListenableBuilder<List<CommunityPost>>(
+                valueListenable: CommunityStore.posts,
+                builder: (context, posts, _) {
+                  final hotPosts = posts.take(6).toList();
+                  final topics = pageData.topics;
+                  return ListView(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
                     children: [
-                      Text('兴趣社群', style: Theme.of(context).textTheme.headlineLarge),
-                      const Spacer(),
-                      GestureDetector(
-                        onTap: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('加入新社群功能开发中')),
-                          );
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: const Color(0xFFE9E0C9)),
+                      Row(
+                        children: [
+                          Text('兴趣社群', style: Theme.of(context).textTheme.headlineLarge),
+                          const Spacer(),
+                          GestureDetector(
+                            onTap: () {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('加入新社群功能开发中')),
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: const Color(0xFFE9E0C9)),
+                              ),
+                              child: const Icon(Icons.add_rounded, color: Color(0xFFFF9F1C)),
+                            ),
                           ),
-                          child: const Icon(Icons.add_rounded, color: Color(0xFFFF9F1C)),
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  const Text('和同好一起探索'),
-                  const SizedBox(height: 18),
-                  CommunityComposer(
-                    onCompose: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => TopicEditorPage(
-                            circles: data.topics.map((t) => t.name).toList(),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 18),
-                  Text('已加入', style: Theme.of(context).textTheme.titleLarge),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: data.topics.take(4).map((topic) {
-                      return GestureDetector(
-                        onTap: () {
+                      const SizedBox(height: 8),
+                      const Text('和同好一起探索'),
+                      const SizedBox(height: 18),
+                      CommunityComposer(
+                        onCompose: () {
                           Navigator.of(context).push(
                             MaterialPageRoute(
-                              builder: (_) => CircleHomePage(circle: topic.name),
+                              builder: (_) => TopicEditorPage(
+                                circles: topics.map((t) => t.name).toList(),
+                              ),
                             ),
                           );
                         },
-                        child: TopicChip(label: '${topic.name}圈'),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 18),
-                  Text('今日热门话题', style: Theme.of(context).textTheme.titleLarge),
-                  const SizedBox(height: 12),
-                  Reveal(
-                    delay: 140,
-                    child: CommunityMasonry(
-                      posts: hotPosts,
-                      onTap: (post) {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => TopicDetailPage(post: post)),
-                        );
-                      },
-                    ),
-                  ),
-                ],
+                      ),
+                      const SizedBox(height: 18),
+                      Text('已加入', style: Theme.of(context).textTheme.titleLarge),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: topics.take(4).map((topic) {
+                          return GestureDetector(
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => CircleHomePage(circle: topic.name),
+                                ),
+                              );
+                            },
+                            child: TopicChip(label: '${topic.name}圈'),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 18),
+                      Text('今日热门话题', style: Theme.of(context).textTheme.titleLarge),
+                      const SizedBox(height: 12),
+                      Reveal(
+                        delay: 140,
+                        child: CommunityMasonry(
+                          posts: hotPosts,
+                          onTap: (post) {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(builder: (_) => TopicDetailPage(post: post)),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  );
+                },
               );
             },
           ),

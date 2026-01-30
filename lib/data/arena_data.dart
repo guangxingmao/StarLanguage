@@ -118,6 +118,16 @@ class LeaderboardEntry {
   final String name;
   final int score;
 
+  factory LeaderboardEntry.fromJson(Map<String, dynamic> json) {
+    return LeaderboardEntry(
+      rank: (json['rank'] as num?)?.toInt() ?? 0,
+      name: json['name'] as String? ?? '',
+      score: (json['score'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {'rank': rank, 'name': name, 'score': score};
+
   LeaderboardEntry copyWith({int? rank, String? name, int? score}) {
     return LeaderboardEntry(
       rank: rank ?? this.rank,
@@ -126,3 +136,73 @@ class LeaderboardEntry {
     );
   }
 }
+
+/// 擂台页假数据（可由后端接口填充）
+class ArenaPageData {
+  const ArenaPageData({
+    required this.pkLeaderboard,
+    required this.personalLeaderboardEntries,
+    required this.zoneLeaderboardTemplate,
+  });
+
+  /// 在线 PK 排行（固定 5 条）
+  final List<LeaderboardEntry> pkLeaderboard;
+  /// 个人积分排行中的假用户（不含「你」），与当前用户分数合并后排序
+  final List<LeaderboardEntry> personalLeaderboardEntries;
+  /// 分区榜模板（不含「你」），与 yourBest 合并后排序
+  final List<LeaderboardEntry> zoneLeaderboardTemplate;
+
+  factory ArenaPageData.fromJson(Map<String, dynamic> json) {
+    return ArenaPageData(
+      pkLeaderboard: (json['pkLeaderboard'] as List<dynamic>? ?? [])
+          .map((e) => LeaderboardEntry.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      personalLeaderboardEntries: (json['personalLeaderboardEntries'] as List<dynamic>? ?? [])
+          .map((e) => LeaderboardEntry.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      zoneLeaderboardTemplate: (json['zoneLeaderboardTemplate'] as List<dynamic>? ?? [])
+          .map((e) => LeaderboardEntry.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'pkLeaderboard': pkLeaderboard.map((e) => e.toJson()).toList(),
+        'personalLeaderboardEntries': personalLeaderboardEntries.map((e) => e.toJson()).toList(),
+        'zoneLeaderboardTemplate': zoneLeaderboardTemplate.map((e) => e.toJson()).toList(),
+      };
+
+  static ArenaPageData fallback() {
+    return const ArenaPageData(
+      pkLeaderboard: [
+        LeaderboardEntry(rank: 1, name: '星知战神', score: 2350),
+        LeaderboardEntry(rank: 2, name: '小小挑战王', score: 2190),
+        LeaderboardEntry(rank: 3, name: '知识飞船', score: 2045),
+        LeaderboardEntry(rank: 4, name: '星际飞手', score: 1980),
+        LeaderboardEntry(rank: 5, name: '闪电回答', score: 1920),
+      ],
+      personalLeaderboardEntries: [
+        LeaderboardEntry(rank: 0, name: '小星星', score: 1740),
+        LeaderboardEntry(rank: 0, name: '光速答题王', score: 1695),
+        LeaderboardEntry(rank: 0, name: '跃迁少年', score: 1580),
+        LeaderboardEntry(rank: 0, name: '知识火箭', score: 1470),
+      ],
+      zoneLeaderboardTemplate: [
+        LeaderboardEntry(rank: 0, name: '星河小队', score: 1820),
+        LeaderboardEntry(rank: 0, name: '晨星', score: 1710),
+        LeaderboardEntry(rank: 0, name: '飞快答题', score: 1640),
+        LeaderboardEntry(rank: 0, name: '知识通关', score: 1550),
+        LeaderboardEntry(rank: 0, name: '探索者', score: 1470),
+      ],
+    );
+  }
+}
+
+/// 擂台页数据仓库：当前返回假数据，之后可改为从后端接口加载
+class ArenaDataRepository {
+  static Future<ArenaPageData> load() async {
+    return Future.value(ArenaPageData.fallback());
+  }
+}
+
+final Future<ArenaPageData> arenaPageDataFuture = ArenaDataRepository.load();

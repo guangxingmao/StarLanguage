@@ -8,3 +8,7 @@ Color parseColor(String hex) {
   }
   return Color(value);
 }
+
+String colorToHex(Color color) {
+  return '#${color.value.toRadixString(16).padLeft(8, '0')}';
+}
