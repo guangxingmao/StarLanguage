@@ -243,7 +243,7 @@ class _NavItem extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
+        duration: const Duration(milliseconds: 0),
         curve: Curves.easeOutCubic,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
