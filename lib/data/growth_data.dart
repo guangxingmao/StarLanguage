@@ -1,6 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
 import '../utils/color_util.dart';
+import 'ai_proxy.dart';
+import 'profile.dart';
 
 // ==================== 成长页实体（供后端接口填充） ====================
 
@@ -247,13 +252,101 @@ class GrowthPageData {
   }
 }
 
-/// 成长数据仓库：当前返回假数据，之后可改为从后端接口加载
+/// 成长数据仓库：已登录时调 GET /growth，未登录或失败时用本地假数据
 class GrowthDataRepository {
   static Future<GrowthPageData> load() async {
-    // TODO: 替换为后端接口，例如：
-    // final response = await http.get(Uri.parse('$baseUrl/growth'));
-    // return GrowthPageData.fromJson(jsonDecode(response.body));
+    final token = ProfileStore.authToken;
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    if (token == null || token.isEmpty) {
+      return Future.value(GrowthPageData.fallback());
+    }
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/growth'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>?;
+        if (data != null) return Future.value(GrowthPageData.fromJson(data));
+      }
+    } catch (_) {}
     return Future.value(GrowthPageData.fallback());
+  }
+
+  /// 更新某项每日任务完成状态（需登录）
+  static Future<bool> setDailyTaskCompleted(String taskId, bool completed) async {
+    final token = ProfileStore.authToken;
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    if (token == null || token.isEmpty) return false;
+    try {
+      final res = await http.patch(
+        Uri.parse('$baseUrl/growth/daily-tasks'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'taskId': taskId, 'completed': completed}),
+      );
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 更新每日提醒设置（需登录）
+  static Future<bool> updateReminder({String? reminderTime, String? message}) async {
+    final token = ProfileStore.authToken;
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    if (token == null || token.isEmpty) return false;
+    try {
+      final body = <String, dynamic>{};
+      if (reminderTime != null) body['reminderTime'] = reminderTime;
+      if (message != null) body['message'] = message;
+      final res = await http.patch(
+        Uri.parse('$baseUrl/growth/reminder'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(body),
+      );
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 更新成长统计（需登录，擂台/学习完成后可调用）
+  static Future<bool> updateStats({
+    int? streakDays,
+    int? accuracyPercent,
+    int? badgeCount,
+    int? weeklyDone,
+    int? weeklyTotal,
+  }) async {
+    final token = ProfileStore.authToken;
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    if (token == null || token.isEmpty) return false;
+    try {
+      final body = <String, dynamic>{};
+      if (streakDays != null) body['streakDays'] = streakDays;
+      if (accuracyPercent != null) body['accuracyPercent'] = accuracyPercent;
+      if (badgeCount != null) body['badgeCount'] = badgeCount;
+      if (weeklyDone != null) body['weeklyDone'] = weeklyDone;
+      if (weeklyTotal != null) body['weeklyTotal'] = weeklyTotal;
+      if (body.isEmpty) return true;
+      final res = await http.patch(
+        Uri.parse('$baseUrl/growth/stats'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(body),
+      );
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
   }
 }
 

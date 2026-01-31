@@ -11,6 +11,7 @@ const healthRoutes = require('./routes/health');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/user');
 const chatRoutes = require('./routes/chat');
+const growthRoutes = require('./routes/growth');
 
 const HunyuanClient = tencentcloud.hunyuan.v20230901.Client;
 
@@ -41,6 +42,7 @@ async function main() {
   authRoutes(app);
   userRoutes(app);
   chatRoutes(app, () => hunyuanClient);
+  growthRoutes(app);
 
   const server = http.createServer(app);
 

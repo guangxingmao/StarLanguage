@@ -219,7 +219,7 @@ class _LanDuelSheet extends StatefulWidget {
 
 class _LanDuelSheetState extends State<_LanDuelSheet> {
   final TextEditingController _ipController = TextEditingController();
-  final TextEditingController _relayController = TextEditingController(text: 'http://localhost:3001');
+  final TextEditingController _relayController = TextEditingController(text: 'http://localhost:3002');
   final TextEditingController _roomController = TextEditingController();
   LanDuelHost? _host;
   DuelConnection? _connection;
@@ -475,7 +475,7 @@ class _LanDuelSheetState extends State<_LanDuelSheet> {
               TextField(
                 controller: _relayController,
                 decoration: InputDecoration(
-                  hintText: '中继地址（如 http://192.168.1.10:3001）',
+                  hintText: '中继地址（如 http://192.168.1.10:3002）',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               ),

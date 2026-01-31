@@ -11,6 +11,10 @@
 | POST | `/auth/verify` | 验证码登录（body: `{ phone, code }`） |
 | GET | `/user/me` | 获取当前用户（Header: `Authorization: Bearer <token>`） |
 | PATCH | `/user/me` | 更新当前用户（body: `name` / `avatarIndex` / `avatarBase64` / `phoneNumber`） |
+| GET | `/growth` | 成长页整页数据（需登录）：提醒、统计、每日任务、今日学习、双卡；reminder/stats 来自用户设置与统计，growthCards 由 stats 计算 |
+| PATCH | `/growth/reminder` | 更新每日提醒设置（body: `{ "reminderTime": "20:00", "message": "可选文案" }`，需登录） |
+| PATCH | `/growth/stats` | 更新成长统计（body: `{ "streakDays", "accuracyPercent", "badgeCount", "weeklyDone", "weeklyTotal" }` 均可选，需登录） |
+| PATCH | `/growth/daily-tasks` | 更新某项每日任务完成状态（body: `{ "taskId": "school", "completed": true }`，需登录） |
 | POST | `/chat` | AI 对话（同 starknow-ai-proxy，需腾讯云密钥） |
 | WebSocket | `/duel` | 擂台中继（建房间 / 加入 / 消息转发） |
 
@@ -48,6 +52,8 @@ npm run dev
 默认监听 **3002**（与 starknow-ai-proxy 的 3001 区分）。  
 在 App 内将「服务地址」设为 `http://localhost:3002` 即可连到本后端。
 
+成长页接口详细设计见 [docs/growth-api.md](docs/growth-api.md)。
+
 ## 目录结构
 
 ```
@@ -55,8 +61,11 @@ backend/
 ├── package.json
 ├── .env.example
 ├── README.md
+├── docs/
+│   └── growth-api.md    # 成长页接口设计
 ├── sql/
-│   └── 001_schema.sql   # 建表脚本
+│   ├── 001_schema.sql   # 认证/用户表
+│   └── 002_growth_schema.sql   # 成长页表（可选，当前用内存）
 └── src/
     ├── index.js         # 入口、Express、WebSocket
     ├── config.js        # 环境变量
@@ -67,6 +76,7 @@ backend/
         ├── health.js
         ├── auth.js
         ├── user.js
+        ├── growth.js
         └── chat.js
 ```
 

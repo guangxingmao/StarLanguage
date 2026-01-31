@@ -26,8 +26,8 @@ import 'widgets/starry_background.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await ProfileStore.init();
   await AiProxyStore.init();
+  await ProfileStore.init();
   runApp(const StarKnowApp());
 }
 
@@ -474,7 +474,7 @@ class _AssistantPageState extends State<AssistantPage> {
                 TextField(
                   controller: controller,
                   decoration: InputDecoration(
-                    hintText: 'http://localhost:3001',
+                    hintText: 'http://localhost:3002',
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
@@ -774,7 +774,7 @@ class AiProxyClient {
 
   static String _normalizeBaseUrl(String url) {
     final trimmed = url.trim();
-    if (trimmed.isEmpty) return 'http://localhost:3001';
+    if (trimmed.isEmpty) return 'http://localhost:3002';
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
       return trimmed;
     }

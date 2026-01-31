@@ -3,8 +3,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class AiProxyStore {
   static const _urlKey = 'ai_proxy_url';
+  /// 默认连 backend（3002）；使用 starknow-ai-proxy 时改为 http://localhost:3001
   static final ValueNotifier<String> url =
-      ValueNotifier<String>('http://localhost:3001');
+      ValueNotifier<String>('http://localhost:3002');
 
   static Future<void> init() async {
     try {

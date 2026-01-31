@@ -4,7 +4,10 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'ai_proxy.dart';
 
 class UserProfile {
   const UserProfile({
@@ -106,9 +109,60 @@ class ProfileStore {
         phoneNumber: phone,
         isLoggedIn: isLoggedIn,
       );
+      if (_authToken != null && _authToken!.isNotEmpty) {
+        await _fetchUserMe();
+      }
     } on MissingPluginException {
       profile.value = UserProfile.defaultProfile();
     }
+  }
+
+  static Future<void> _fetchUserMe() async {
+    final token = _authToken;
+    if (token == null || token.isEmpty) return;
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/user/me'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (res.statusCode == 401) {
+        _authToken = null;
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove(_tokenKey);
+        } catch (_) {}
+        profile.value = profile.value.copyWith(isLoggedIn: false);
+        return;
+      }
+      if (res.statusCode != 200) return;
+      final data = jsonDecode(res.body) as Map<String, dynamic>?;
+      if (data == null) return;
+      final next = profile.value.copyWith(
+        phoneNumber: data['phoneNumber'] as String?,
+        name: data['name'] as String? ?? profile.value.name,
+        avatarIndex: (data['avatarIndex'] as num?)?.toInt() ?? profile.value.avatarIndex,
+        avatarBase64: data['avatarBase64'] as String?,
+        isLoggedIn: true,
+      );
+      profile.value = next;
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_nameKey, next.name);
+        await prefs.setInt(_avatarKey, next.avatarIndex);
+        if (next.avatarBase64 == null) {
+          await prefs.remove(_avatarImageKey);
+        } else {
+          await prefs.setString(_avatarImageKey, next.avatarBase64!);
+        }
+        if (next.phoneNumber == null) {
+          await prefs.remove(_phoneKey);
+        } else {
+          await prefs.setString(_phoneKey, next.phoneNumber!);
+        }
+        await prefs.setBool(_isLoggedInKey, true);
+      } catch (_) {}
+    } catch (_) {}
   }
 
   static Future<void> update(UserProfile next) async {
@@ -129,6 +183,40 @@ class ProfileStore {
       }
       await prefs.setBool(_isLoggedInKey, next.isLoggedIn);
     } on MissingPluginException {}
+    final token = _authToken;
+    if (token != null && token.isNotEmpty && next.isLoggedIn) {
+      _patchUserMe(next);
+    }
+  }
+
+  static Future<void> _patchUserMe(UserProfile next) async {
+    final token = _authToken;
+    if (token == null || token.isEmpty) return;
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    try {
+      final body = <String, dynamic>{
+        'name': next.name,
+        'avatarIndex': next.avatarIndex,
+        'avatarBase64': next.avatarBase64,
+        'phoneNumber': next.phoneNumber,
+      };
+      final res = await http.patch(
+        Uri.parse('$baseUrl/user/me'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(body),
+      );
+      if (res.statusCode == 401) {
+        _authToken = null;
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove(_tokenKey);
+        } catch (_) {}
+        profile.value = profile.value.copyWith(isLoggedIn: false);
+      }
+    } catch (_) {}
   }
 
   static Future<void> setAuthToken(String? token) async {

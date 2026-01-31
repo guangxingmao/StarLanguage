@@ -45,7 +45,7 @@ class RelayDuelClient {
   String _toWs(String baseUrl) {
     var url = baseUrl.trim();
     if (url.isEmpty) {
-      url = 'http://localhost:3001';
+      url = 'http://localhost:3002';
     }
     if (!url.startsWith('http')) {
       url = 'http://$url';
