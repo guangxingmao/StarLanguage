@@ -1,0 +1,43 @@
+# 星知后端：AI 代理服务 + PostgreSQL（数据库供后续接入，当前 server.js 未改）
+services:
+  app:
+    build:
+      context: ./starknow-ai-proxy
+      dockerfile: Dockerfile
+    image: starknow-ai-proxy:latest
+    container_name: starknow-ai-proxy
+    ports:
+      - "${PORT:-3001}:3001"
+    environment:
+      PORT: 3001
+      TENCENT_REGION: ${TENCENT_REGION:-ap-guangzhou}
+      TENCENT_SECRET_ID: ${TENCENT_SECRET_ID}
+      TENCENT_SECRET_KEY: ${TENCENT_SECRET_KEY}
+      # 数据库连接串（后续在 server 中接入时使用，当前未改 server.js）
+      DATABASE_URL: postgres://${POSTGRES_USER:-starknow}:${POSTGRES_PASSWORD:-starknow}@db:5432/${POSTGRES_DB:-starknow}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    container_name: starknow-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-starknow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-starknow}
+      POSTGRES_DB: ${POSTGRES_DB:-starknow}
+    volumes:
+      - starknow_pgdata:/var/lib/postgresql/data
+      # 首次启动时自动执行建表脚本（仅当数据目录为空时生效）
+      - ./starknow-ai-proxy/sql/001_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U starknow -d starknow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  starknow_pgdata:

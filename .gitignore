@@ -1,3 +1,7 @@
+# Env and Docker secrets
+.env
+.env.local
+
 # Miscellaneous
 *.class
 *.log
