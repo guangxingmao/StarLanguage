@@ -42,15 +42,6 @@ class ReminderData {
         'progress': progress,
         if (remainingCount != null) 'remainingCount': remainingCount,
       };
-
-  static ReminderData fallback() {
-    return const ReminderData(
-      reminderTime: '20:00',
-      message: '今天还差 3 项打卡，加油！',
-      progress: 0.25,
-      remainingCount: 3,
-    );
-  }
 }
 
 /// 成长统计：连续天数、正确率、徽章数
@@ -78,14 +69,6 @@ class GrowthStatsData {
         'accuracyPercent': accuracyPercent,
         'badgeCount': badgeCount,
       };
-
-  static GrowthStatsData fallback() {
-    return const GrowthStatsData(
-      streakDays: 7,
-      accuracyPercent: 86,
-      badgeCount: 9,
-    );
-  }
 }
 
 /// 每日任务项（iconKey 与 UI 图标映射见 [DailyTask.iconKeyToIcon]）
@@ -118,15 +101,6 @@ class DailyTask {
         'label': label,
         'completed': completed,
       };
-
-  static List<DailyTask> fallbackTasks() {
-    return const [
-      DailyTask(iconKey: 'school', label: '学习一个新知识点', completed: true),
-      DailyTask(iconKey: 'video', label: '观看一个视频或图文', completed: false),
-      DailyTask(iconKey: 'arena', label: '参与一次擂台', completed: false),
-      DailyTask(iconKey: 'forum', label: '参与一次社群讨论', completed: false),
-    ];
-  }
 }
 
 /// 今日学习推荐
@@ -155,9 +129,6 @@ class TodayLearningData {
         if (summary != null) 'summary': summary,
       };
 
-  static TodayLearningData fallback() {
-    return const TodayLearningData(title: '还没有学习内容');
-  }
 }
 
 /// 成长双卡行中的一项（如「连续学习」「本周挑战」）
@@ -187,13 +158,6 @@ class GrowthCardItem {
         'value': value,
         'colorHex': colorHex,
       };
-
-  static List<GrowthCardItem> fallbackCards() {
-    return const [
-      GrowthCardItem(title: '连续学习', value: '7 天', colorHex: '#FFD166'),
-      GrowthCardItem(title: '本周挑战', value: '3 / 5', colorHex: '#B8F1E0'),
-    ];
-  }
 }
 
 /// 成长页整页数据（可由后端一次性返回）
@@ -240,25 +204,15 @@ class GrowthPageData {
         if (growthCards != null)
           'growthCards': growthCards!.map((e) => e.toJson()).toList(),
       };
-
-  static GrowthPageData fallback() {
-    return GrowthPageData(
-      reminder: ReminderData.fallback(),
-      stats: GrowthStatsData.fallback(),
-      dailyTasks: DailyTask.fallbackTasks(),
-      todayLearning: TodayLearningData.fallback(),
-      growthCards: GrowthCardItem.fallbackCards(),
-    );
-  }
 }
 
-/// 成长数据仓库：已登录时调 GET /growth，未登录或失败时用本地假数据
+/// 成长数据仓库：已登录时调 GET /growth，未登录或失败时返回 null（由页面展示「暂无数据」）
 class GrowthDataRepository {
-  static Future<GrowthPageData> load() async {
+  static Future<GrowthPageData?> load() async {
     final token = ProfileStore.authToken;
     final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
     if (token == null || token.isEmpty) {
-      return Future.value(GrowthPageData.fallback());
+      return null;
     }
     try {
       final res = await http.get(
@@ -267,10 +221,10 @@ class GrowthDataRepository {
       );
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body) as Map<String, dynamic>?;
-        if (data != null) return Future.value(GrowthPageData.fromJson(data));
+        if (data != null) return GrowthPageData.fromJson(data);
       }
     } catch (_) {}
-    return Future.value(GrowthPageData.fallback());
+    return null;
   }
 
   /// 更新某项每日任务完成状态（需登录）
@@ -350,5 +304,5 @@ class GrowthDataRepository {
   }
 }
 
-/// 成长页数据 Future，与 demoDataFuture 类似，之后可改为 API
-final Future<GrowthPageData> growthDataFuture = GrowthDataRepository.load();
+/// 成长页数据 Future（来自 GET /growth，未登录或失败时为 null）
+final Future<GrowthPageData?> growthDataFuture = GrowthDataRepository.load();

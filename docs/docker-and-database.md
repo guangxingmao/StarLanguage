@@ -41,7 +41,10 @@ docker compose up -d
 - **app**（starknow-ai-proxy）：AI 代理，端口 3001
 - **db**（PostgreSQL）：数据库，端口 5433（宿主机映射，避免与本机 5432 冲突）
 
-**数据库和表**：首次执行 `docker compose up -d` 时，PostgreSQL 会自动创建数据库 `starknow`，并执行 `starknow-ai-proxy/sql/001_schema.sql` 自动建表（`auth_codes`、`auth_tokens`、`users` 等）。无需在 DBeaver 里手动建库或建表。若你之前已经启动过 db 但没建表，可任选其一：在 DBeaver 里对 `starknow` 执行 `001_schema.sql`，或删掉数据卷后重新 `up`（`docker compose down -v` 再 `docker compose up -d`，会清空数据库）。
+**数据库和表**：首次执行 `docker compose up -d` 时（或执行 `docker compose down -v` 后再次 `up -d`，数据目录为空时），PostgreSQL 会按文件名顺序执行 `docker-entrypoint-initdb.d/` 下的脚本：`001_schema.sql`（认证/用户表）、`002_growth_schema.sql`（成长页表）、`002_seed_user.sql`（默认演示用户）、`003_growth_seed.sql`（成长页初始数据）。因此**全新启动**后库中会有一条演示用户及其成长页数据。  
+若你**之前已经启动过 db**（数据卷非空），这些 init 脚本**不会再次执行**，表里可能没有成长页数据。此时可二选一：  
+- **清空后重新初始化**：`docker compose down -v` 再 `docker compose up -d`（会清空数据库并重新跑所有 init 脚本）；  
+- **不删数据，手动补数据**：在 DBeaver 里对库 `starknow` 依次执行 `backend/sql/002_growth_schema.sql`、`backend/sql/002_seed_user.sql`、`backend/sql/003_growth_seed.sql`。
 
 ### 步骤 4：验证是否正常
 
@@ -149,7 +152,7 @@ docker compose down
 - **镜像**：`postgres:16-alpine`
 - **默认**：用户 `starknow`，密码 `starknow`，库 `starknow`
 - **数据卷**：`starknow_pgdata`，`docker compose down` 不会删数据
-- **建库与建表**：首次 `docker compose up -d` 时自动创建数据库并执行 `starknow-ai-proxy/sql/001_schema.sql` 建表；之后若需手动建表，可在 DBeaver 中连接后执行该脚本
+- **建库与建表**：首次或数据目录为空时 `docker compose up -d`，会自动执行 `001_schema.sql`、`002_growth_schema.sql`、`002_seed_user.sql`、`003_growth_seed.sql`（见项目根 `docker-compose.yml` 中 db 的 volumes）；之后若需手动补表或种子，可执行 `backend/sql/` 下对应脚本
 - **连接串**（在容器内或后续 server 使用）：  
   `postgres://starknow:starknow@db:5432/starknow`  
   若改了 `.env` 里的 `POSTGRES_*`，则 `DATABASE_URL` 会由 compose 注入为对应值。

@@ -113,7 +113,7 @@ async function main() {
     if (!/^1[3-9]\d{9}$/.test(phone)) {
       return res.status(400).json({ error: 'invalid_phone', message: '请输入正确的11位手机号' });
     }
-    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const code = '666666';
     codes.set(phone, { code, expiresAt: Date.now() + CODE_TTL_MS });
     console.log(`[auth] send-code ${phone} -> ${code} (demo)`);
     res.json({ ok: true, demoCode: code });
@@ -128,14 +128,16 @@ async function main() {
     if (!/^\d{6}$/.test(code)) {
       return res.status(400).json({ error: 'invalid_code', message: '请输入6位数字验证码' });
     }
-    const entry = codes.get(phone);
-    if (!entry || entry.expiresAt < Date.now()) {
-      return res.status(400).json({ error: 'code_expired', message: '验证码已过期，请重新获取' });
+    if (code !== '666666') {
+      const entry = codes.get(phone);
+      if (!entry || entry.expiresAt < Date.now()) {
+        return res.status(400).json({ error: 'code_expired', message: '验证码已过期，请重新获取' });
+      }
+      if (entry.code !== code) {
+        return res.status(400).json({ error: 'invalid_code', message: '验证码错误' });
+      }
+      codes.delete(phone);
     }
-    if (entry.code !== code) {
-      return res.status(400).json({ error: 'invalid_code', message: '验证码错误' });
-    }
-    codes.delete(phone);
 
     let user = users.get(phone);
     if (!user) {
@@ -195,6 +197,95 @@ async function main() {
       avatarIndex: user.avatarIndex,
       avatarBase64: user.avatarBase64,
     });
+  });
+
+  // ---------- 成长页 API（内存，与 backend 同结构，便于 3001/3002 通用） ----------
+  const growthReminder = new Map();
+  const growthStats = new Map();
+  const growthDailyCompletion = new Map();
+  const GROWTH_TASKS = [
+    { id: 'school', iconKey: 'school', label: '学习一个新知识点', completed: false },
+    { id: 'video', iconKey: 'video', label: '观看一个视频或图文', completed: false },
+    { id: 'arena', iconKey: 'arena', label: '参与一次擂台', completed: false },
+    { id: 'forum', iconKey: 'forum', label: '参与一次社群讨论', completed: false },
+  ];
+  const TODAY_LEARNING = [
+    { title: '为什么天空是蓝色的？', contentId: 'sky-blue', summary: '光的散射' },
+    { title: '恐龙为什么会灭绝？', contentId: 'dinosaur', summary: '小行星与气候' },
+    { title: '还没有学习内容', contentId: null, summary: null },
+  ];
+
+  function growthTodayKey() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  app.get('/growth', requireAuth, (req, res) => {
+    const { phone } = req.auth;
+    const reminderSetting = growthReminder.get(phone) || { reminderTime: '20:00', message: '' };
+    const stats = growthStats.get(phone) || { streakDays: 0, accuracyPercent: 0, badgeCount: 0, weeklyDone: 0, weeklyTotal: 5 };
+    const key = `${phone}:${growthTodayKey()}`;
+    const completed = growthDailyCompletion.get(key) || {};
+    const dailyTasks = GROWTH_TASKS.map((t) => ({ ...t, completed: completed[t.id] !== undefined ? completed[t.id] : t.completed }));
+    const completedCount = dailyTasks.filter((t) => t.completed).length;
+    const total = dailyTasks.length;
+    const progress = total === 0 ? 0 : Math.min(1, completedCount / total);
+    const remainingCount = Math.max(0, total - completedCount);
+    const reminder = {
+      reminderTime: reminderSetting.reminderTime || '20:00',
+      message: reminderSetting.message || (remainingCount > 0 ? `今天还差 ${remainingCount} 项打卡，加油！` : '今日打卡已完成，真棒！'),
+      progress,
+      remainingCount,
+    };
+    const seed = (phone + growthTodayKey()).split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+    const todayLearning = TODAY_LEARNING[Math.abs(seed) % TODAY_LEARNING.length];
+    const growthCards = [
+      { title: '连续学习', value: `${stats.streakDays} 天`, colorHex: '#FFD166' },
+      { title: '本周挑战', value: `${stats.weeklyDone} / ${stats.weeklyTotal}`, colorHex: '#B8F1E0' },
+    ];
+    res.json({
+      reminder,
+      stats: { streakDays: stats.streakDays, accuracyPercent: stats.accuracyPercent, badgeCount: stats.badgeCount },
+      dailyTasks,
+      todayLearning: { ...todayLearning },
+      growthCards,
+    });
+  });
+
+  app.patch('/growth/reminder', requireAuth, (req, res) => {
+    const { phone } = req.auth;
+    const { reminderTime, message } = req.body || {};
+    const cur = growthReminder.get(phone) || {};
+    const next = {
+      reminderTime: reminderTime !== undefined ? String(reminderTime) : cur.reminderTime,
+      message: message !== undefined ? String(message) : cur.message,
+    };
+    growthReminder.set(phone, next);
+    res.json({ ok: true, reminderTime: next.reminderTime, message: next.message });
+  });
+
+  app.patch('/growth/stats', requireAuth, (req, res) => {
+    const { phone } = req.auth;
+    const cur = growthStats.get(phone) || { streakDays: 0, accuracyPercent: 0, badgeCount: 0, weeklyDone: 0, weeklyTotal: 5 };
+    const body = req.body || {};
+    if (body.streakDays !== undefined) cur.streakDays = Number(body.streakDays) || 0;
+    if (body.accuracyPercent !== undefined) cur.accuracyPercent = Math.min(100, Math.max(0, Number(body.accuracyPercent) || 0));
+    if (body.badgeCount !== undefined) cur.badgeCount = Math.max(0, Number(body.badgeCount) || 0);
+    if (body.weeklyDone !== undefined) cur.weeklyDone = Math.max(0, Number(body.weeklyDone) || 0);
+    if (body.weeklyTotal !== undefined) cur.weeklyTotal = Math.max(1, Number(body.weeklyTotal) || 1);
+    growthStats.set(phone, cur);
+    res.json({ ok: true, stats: cur });
+  });
+
+  app.patch('/growth/daily-tasks', requireAuth, (req, res) => {
+    const { phone } = req.auth;
+    const { taskId, completed } = req.body || {};
+    if (!taskId || typeof completed !== 'boolean') {
+      return res.status(400).json({ error: 'invalid_body', message: '需要 taskId 与 completed (boolean)' });
+    }
+    const key = `${phone}:${growthTodayKey()}`;
+    if (!growthDailyCompletion.has(key)) growthDailyCompletion.set(key, Object.create(null));
+    growthDailyCompletion.get(key)[taskId] = completed;
+    res.json({ ok: true, taskId, completed, date: growthTodayKey() });
   });
 
   app.post('/chat', async (req, res) => {

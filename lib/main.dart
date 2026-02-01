@@ -18,6 +18,7 @@ import 'data/demo_data.dart';
 import 'data/community_data.dart';
 import 'data/ai_proxy.dart';
 import 'screens/arena/arena_page.dart';
+import 'screens/auth/auth_page.dart';
 import 'screens/community/community_page.dart';
 import 'screens/growth/growth_page.dart';
 import 'screens/growth/profile_page.dart' show AchievementUnlockPopup, BadgeWall;
@@ -98,9 +99,17 @@ class _SplashScreenState extends State<SplashScreen> {
       }
     });
     Future.delayed(const Duration(milliseconds: 1400), () {
-      if (mounted) {
+      if (!mounted) return;
+      final isLoggedIn = ProfileStore.profile.value.isLoggedIn;
+      if (isLoggedIn) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const StarKnowShell()),
+        );
+      } else {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => const AuthPage(routeOnSuccess: StarKnowShell()),
+          ),
         );
       }
     });
@@ -145,8 +154,8 @@ class StarKnowShell extends StatefulWidget {
 class _StarKnowShellState extends State<StarKnowShell> {
   int _index = 0;
 
-  final _pages = const [
-    GrowthPage(),
+  List<Widget> get _pages => [
+    GrowthPage(selectedTabIndex: _index),
     CommunityPage(),
     AssistantPage(),
     ArenaPage(),

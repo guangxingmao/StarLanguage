@@ -1,15 +1,9 @@
 const { requireAuth } = require('../middleware/auth');
-
-// 每日任务完成状态：key = `${phone}:${dateStr}` -> { taskId -> completed }，按日重置，后续可迁 DB
-const dailyTaskCompletion = new Map();
+const { pool } = require('../db');
 
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
 }
-// 用户提醒设置：phone -> { reminderTime, message }
-const userReminder = new Map();
-// 用户成长统计：phone -> { streakDays, accuracyPercent, badgeCount, weeklyDone, weeklyTotal }
-const userStats = new Map();
 
 const DAILY_TASK_TEMPLATE = [
   { id: 'school', iconKey: 'school', label: '学习一个新知识点', completed: false },
@@ -26,30 +20,67 @@ const TODAY_LEARNING_SUGGESTIONS = [
   { title: '还没有学习内容', contentId: null, summary: null },
 ];
 
-const DEFAULT_REMINDER = { reminderTime: '20:00', message: '今天还差 3 项打卡，加油！' };
-const DEFAULT_STATS = { streakDays: 0, accuracyPercent: 0, badgeCount: 0, weeklyDone: 0, weeklyTotal: 5 };
-
-function getReminder(phone) {
-  return userReminder.get(phone) || { ...DEFAULT_REMINDER };
-}
-
-function getStats(phone) {
-  const base = { ...DEFAULT_STATS };
-  const stored = userStats.get(phone);
-  if (stored) {
-    if (stored.streakDays !== undefined) base.streakDays = stored.streakDays;
-    if (stored.accuracyPercent !== undefined) base.accuracyPercent = stored.accuracyPercent;
-    if (stored.badgeCount !== undefined) base.badgeCount = stored.badgeCount;
-    if (stored.weeklyDone !== undefined) base.weeklyDone = stored.weeklyDone;
-    if (stored.weeklyTotal !== undefined) base.weeklyTotal = stored.weeklyTotal;
+async function getReminder(phone) {
+  const r = await pool.query(
+    'SELECT reminder_time, message FROM growth_reminder WHERE phone = $1',
+    [phone]
+  );
+  if (r.rows.length) {
+    return {
+      reminderTime: r.rows[0].reminder_time || '20:00',
+      message: r.rows[0].message ?? '',
+    };
   }
-  return base;
+  const now = Date.now();
+  await pool.query(
+    `INSERT INTO growth_reminder (phone, reminder_time, message, updated_at)
+     VALUES ($1, '20:00', '今天还差 3 项打卡，加油！', $2)
+     ON CONFLICT (phone) DO NOTHING`,
+    [phone, now]
+  );
+  return { reminderTime: '20:00', message: '今天还差 3 项打卡，加油！' };
 }
 
-function mergeTaskCompletion(phone, tasks) {
-  const key = `${phone}:${todayKey()}`;
-  const completed = dailyTaskCompletion.get(key);
-  if (!completed) return tasks.map((t) => ({ ...t }));
+async function getStats(phone) {
+  const r = await pool.query(
+    'SELECT streak_days, accuracy_percent, badge_count, weekly_done, weekly_total FROM growth_stats WHERE phone = $1',
+    [phone]
+  );
+  if (r.rows.length) {
+    const row = r.rows[0];
+    return {
+      streakDays: row.streak_days ?? 0,
+      accuracyPercent: row.accuracy_percent ?? 0,
+      badgeCount: row.badge_count ?? 0,
+      weeklyDone: row.weekly_done ?? 0,
+      weeklyTotal: row.weekly_total ?? 5,
+    };
+  }
+  const now = Date.now();
+  await pool.query(
+    `INSERT INTO growth_stats (phone, streak_days, accuracy_percent, badge_count, weekly_done, weekly_total, updated_at)
+     VALUES ($1, 0, 0, 0, 0, 5, $2)
+     ON CONFLICT (phone) DO NOTHING`,
+    [phone, now]
+  );
+  return { streakDays: 0, accuracyPercent: 0, badgeCount: 0, weeklyDone: 0, weeklyTotal: 5 };
+}
+
+async function getDailyTaskCompletion(phone) {
+  const dateStr = todayKey();
+  const r = await pool.query(
+    'SELECT task_id, completed FROM growth_daily_completion WHERE phone = $1 AND date = $2',
+    [phone, dateStr]
+  );
+  const completed = Object.create(null);
+  for (const row of r.rows) {
+    completed[row.task_id] = row.completed;
+  }
+  return completed;
+}
+
+function mergeTaskCompletion(completed, tasks) {
+  if (!Object.keys(completed).length) return tasks.map((t) => ({ ...t }));
   return tasks.map((t) => ({
     ...t,
     completed: completed[t.id] !== undefined ? completed[t.id] : t.completed,
@@ -57,7 +88,7 @@ function mergeTaskCompletion(phone, tasks) {
 }
 
 function pickTodayLearning(phone) {
-  const dateStr = new Date().toISOString().slice(0, 10);
+  const dateStr = todayKey();
   const seed = (phone + dateStr).split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
   const idx = Math.abs(seed) % TODAY_LEARNING_SUGGESTIONS.length;
   return { ...TODAY_LEARNING_SUGGESTIONS[idx] };
@@ -70,7 +101,7 @@ function buildGrowthCards(stats) {
   ];
 }
 
-function buildReminderPayload(phone, reminderSetting, tasksWithCompletion) {
+function buildReminderPayload(reminderSetting, tasksWithCompletion) {
   const completedCount = tasksWithCompletion.filter((t) => t.completed).length;
   const total = tasksWithCompletion.length;
   const progress = total === 0 ? 0 : Math.min(1, completedCount / total);
@@ -90,69 +121,127 @@ function buildReminderPayload(phone, reminderSetting, tasksWithCompletion) {
 }
 
 function routes(app) {
-  app.get('/growth', requireAuth, (req, res) => {
-    const { phone } = req.auth;
-    const reminderSetting = getReminder(phone);
-    const stats = getStats(phone);
-    const dailyTasks = mergeTaskCompletion(phone, DAILY_TASK_TEMPLATE);
-    const reminder = buildReminderPayload(phone, reminderSetting, dailyTasks);
-    const todayLearning = pickTodayLearning(phone);
-    const growthCards = buildGrowthCards(stats);
+  app.get('/growth', requireAuth, async (req, res) => {
+    try {
+      const { phone } = req.auth;
+      const [reminderSetting, stats, completed] = await Promise.all([
+        getReminder(phone),
+        getStats(phone),
+        getDailyTaskCompletion(phone),
+      ]);
+      const dailyTasks = mergeTaskCompletion(completed, DAILY_TASK_TEMPLATE);
+      const reminder = buildReminderPayload(reminderSetting, dailyTasks);
+      const todayLearning = pickTodayLearning(phone);
+      const growthCards = buildGrowthCards(stats);
 
-    res.json({
-      reminder,
-      stats: {
-        streakDays: stats.streakDays,
-        accuracyPercent: stats.accuracyPercent,
-        badgeCount: stats.badgeCount,
-      },
-      dailyTasks,
-      todayLearning,
-      growthCards,
-    });
-  });
-
-  app.patch('/growth/reminder', requireAuth, (req, res) => {
-    const { phone } = req.auth;
-    const { reminderTime, message } = req.body || {};
-    const current = getReminder(phone);
-    const next = {
-      reminderTime: reminderTime !== undefined ? String(reminderTime) : current.reminderTime,
-      message: message !== undefined ? String(message) : current.message,
-    };
-    userReminder.set(phone, next);
-    res.json({ ok: true, reminderTime: next.reminderTime, message: next.message });
-  });
-
-  app.patch('/growth/stats', requireAuth, (req, res) => {
-    const { phone } = req.auth;
-    const body = req.body || {};
-    const current = getStats(phone);
-    const next = { ...current };
-    if (body.streakDays !== undefined) next.streakDays = Number(body.streakDays) || 0;
-    if (body.accuracyPercent !== undefined) next.accuracyPercent = Math.min(100, Math.max(0, Number(body.accuracyPercent) || 0));
-    if (body.badgeCount !== undefined) next.badgeCount = Math.max(0, Number(body.badgeCount) || 0);
-    if (body.weeklyDone !== undefined) next.weeklyDone = Math.max(0, Number(body.weeklyDone) || 0);
-    if (body.weeklyTotal !== undefined) next.weeklyTotal = Math.max(1, Number(body.weeklyTotal) || 1);
-    userStats.set(phone, next);
-    res.json({ ok: true, stats: next });
-  });
-
-  app.patch('/growth/daily-tasks', requireAuth, (req, res) => {
-    const { phone } = req.auth;
-    const { taskId, completed } = req.body || {};
-    if (!taskId || typeof completed !== 'boolean') {
-      return res.status(400).json({
-        error: 'invalid_body',
-        message: '需要 taskId 与 completed (boolean)',
+      res.json({
+        reminder,
+        stats: {
+          streakDays: stats.streakDays,
+          accuracyPercent: stats.accuracyPercent,
+          badgeCount: stats.badgeCount,
+        },
+        dailyTasks,
+        todayLearning,
+        growthCards,
       });
+    } catch (err) {
+      console.error('[growth GET]', err);
+      res.status(500).json({ error: 'server_error', message: '获取失败' });
     }
-    const key = `${phone}:${todayKey()}`;
-    if (!dailyTaskCompletion.has(key)) {
-      dailyTaskCompletion.set(key, Object.create(null));
+  });
+
+  app.patch('/growth/reminder', requireAuth, async (req, res) => {
+    try {
+      const { phone } = req.auth;
+      const { reminderTime, message } = req.body || {};
+      const r = await pool.query(
+        'SELECT reminder_time, message FROM growth_reminder WHERE phone = $1',
+        [phone]
+      );
+      const current = r.rows.length
+        ? { reminderTime: r.rows[0].reminder_time, message: r.rows[0].message ?? '' }
+        : { reminderTime: '20:00', message: '' };
+      const nextTime = reminderTime !== undefined ? String(reminderTime) : current.reminderTime;
+      const nextMsg = message !== undefined ? String(message) : current.message;
+      const now = Date.now();
+      await pool.query(
+        `INSERT INTO growth_reminder (phone, reminder_time, message, updated_at)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (phone) DO UPDATE SET reminder_time = $2, message = $3, updated_at = $4`,
+        [phone, nextTime, nextMsg, now]
+      );
+      res.json({ ok: true, reminderTime: nextTime, message: nextMsg });
+    } catch (err) {
+      console.error('[growth PATCH reminder]', err);
+      res.status(500).json({ error: 'server_error', message: '更新失败' });
     }
-    dailyTaskCompletion.get(key)[taskId] = completed;
-    res.json({ ok: true, taskId, completed, date: todayKey() });
+  });
+
+  app.patch('/growth/stats', requireAuth, async (req, res) => {
+    try {
+      const { phone } = req.auth;
+      const body = req.body || {};
+      const r = await pool.query(
+        'SELECT streak_days, accuracy_percent, badge_count, weekly_done, weekly_total FROM growth_stats WHERE phone = $1',
+        [phone]
+      );
+      let streak = 0,
+        accuracy = 0,
+        badge = 0,
+        weeklyDone = 0,
+        weeklyTotal = 5;
+      if (r.rows.length) {
+        const row = r.rows[0];
+        streak = row.streak_days ?? 0;
+        accuracy = row.accuracy_percent ?? 0;
+        badge = row.badge_count ?? 0;
+        weeklyDone = row.weekly_done ?? 0;
+        weeklyTotal = row.weekly_total ?? 5;
+      }
+      if (body.streakDays !== undefined) streak = Number(body.streakDays) || 0;
+      if (body.accuracyPercent !== undefined) accuracy = Math.min(100, Math.max(0, Number(body.accuracyPercent) || 0));
+      if (body.badgeCount !== undefined) badge = Math.max(0, Number(body.badgeCount) || 0);
+      if (body.weeklyDone !== undefined) weeklyDone = Math.max(0, Number(body.weeklyDone) || 0);
+      if (body.weeklyTotal !== undefined) weeklyTotal = Math.max(1, Number(body.weeklyTotal) || 1);
+      const now = Date.now();
+      await pool.query(
+        `INSERT INTO growth_stats (phone, streak_days, accuracy_percent, badge_count, weekly_done, weekly_total, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (phone) DO UPDATE SET
+           streak_days = $2, accuracy_percent = $3, badge_count = $4, weekly_done = $5, weekly_total = $6, updated_at = $7`,
+        [phone, streak, accuracy, badge, weeklyDone, weeklyTotal, now]
+      );
+      res.json({ ok: true, stats: { streakDays: streak, accuracyPercent: accuracy, badgeCount: badge, weeklyDone, weeklyTotal } });
+    } catch (err) {
+      console.error('[growth PATCH stats]', err);
+      res.status(500).json({ error: 'server_error', message: '更新失败' });
+    }
+  });
+
+  app.patch('/growth/daily-tasks', requireAuth, async (req, res) => {
+    try {
+      const { phone } = req.auth;
+      const { taskId, completed } = req.body || {};
+      if (!taskId || typeof completed !== 'boolean') {
+        return res.status(400).json({
+          error: 'invalid_body',
+          message: '需要 taskId 与 completed (boolean)',
+        });
+      }
+      const dateStr = todayKey();
+      const now = Date.now();
+      await pool.query(
+        `INSERT INTO growth_daily_completion (phone, date, task_id, completed, updated_at)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (phone, date, task_id) DO UPDATE SET completed = $4, updated_at = $5`,
+        [phone, dateStr, taskId, completed, now]
+      );
+      res.json({ ok: true, taskId, completed, date: dateStr });
+    } catch (err) {
+      console.error('[growth PATCH daily-tasks]', err);
+      res.status(500).json({ error: 'server_error', message: '更新失败' });
+    }
   });
 }
 

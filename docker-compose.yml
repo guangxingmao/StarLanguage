@@ -29,8 +29,11 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-starknow}
     volumes:
       - starknow_pgdata:/var/lib/postgresql/data
-      # 首次启动时自动执行建表脚本（仅当数据目录为空时生效）
+      # 首次启动时自动执行建表与种子脚本（仅当数据目录为空时生效，按文件名顺序）
       - ./starknow-ai-proxy/sql/001_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+      - ./backend/sql/002_growth_schema.sql:/docker-entrypoint-initdb.d/002_growth_schema.sql:ro
+      - ./backend/sql/002_seed_user.sql:/docker-entrypoint-initdb.d/002_seed_user.sql:ro
+      - ./backend/sql/003_growth_seed.sql:/docker-entrypoint-initdb.d/003_growth_seed.sql:ro
     ports:
       - "${POSTGRES_PORT:-5433}:5432"
     healthcheck:

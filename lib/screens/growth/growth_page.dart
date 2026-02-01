@@ -8,9 +8,41 @@ import 'growth_cards.dart';
 import 'profile_card.dart';
 import 'profile_page.dart';
 
-/// 成长页：我的、每日提醒、打卡、今日学习（数据来自 [GrowthPageData]，可后端接口填充）
-class GrowthPage extends StatelessWidget {
-  const GrowthPage({super.key});
+/// 成长页：我的、每日提醒、打卡、今日学习（数据来自 GET /growth 接口）
+class GrowthPage extends StatefulWidget {
+  const GrowthPage({super.key, this.selectedTabIndex});
+
+  /// 当前选中的底部 Tab 下标，0 表示本页。传入后切回本 Tab 时会自动重新请求接口以展示最新数据。
+  final int? selectedTabIndex;
+
+  @override
+  State<GrowthPage> createState() => _GrowthPageState();
+}
+
+class _GrowthPageState extends State<GrowthPage> {
+  late Future<GrowthPageData?> _dataFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _dataFuture = GrowthDataRepository.load();
+  }
+
+  @override
+  void didUpdateWidget(covariant GrowthPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final idx = widget.selectedTabIndex;
+    final wasOther = oldWidget.selectedTabIndex != null && oldWidget.selectedTabIndex != 0;
+    if (idx == 0 && wasOther) {
+      _refreshData();
+    }
+  }
+
+  void _refreshData() {
+    setState(() {
+      _dataFuture = GrowthDataRepository.load();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -18,18 +50,48 @@ class GrowthPage extends StatelessWidget {
       children: [
         const StarryBackground(),
         SafeArea(
-          child: FutureBuilder<GrowthPageData>(
-            future: growthDataFuture,
+          child: FutureBuilder<GrowthPageData?>(
+            future: _dataFuture,
             builder: (context, snapshot) {
-              final data = snapshot.data ?? GrowthPageData.fallback();
-              return ListView(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
-                children: [
-                  Row(
-                    children: [
-                      Text('成长', style: Theme.of(context).textTheme.headlineLarge),
-                      const Spacer(),
-                      ValueListenableBuilder<UserProfile>(
+              if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final data = snapshot.data;
+              if (data == null) {
+                return RefreshIndicator(
+                  onRefresh: () async {
+                    _refreshData();
+                    await _dataFuture;
+                  },
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: SizedBox(
+                      height: MediaQuery.of(context).size.height * 0.5,
+                      child: const Center(
+                        child: Text('暂无数据，请登录后刷新'),
+                      ),
+                    ),
+                  ),
+                );
+              }
+              return RefreshIndicator(
+                onRefresh: () async {
+                  _refreshData();
+                  await _dataFuture;
+                },
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
+                  children: [
+                    Row(
+                      children: [
+                        Text('成长', style: Theme.of(context).textTheme.headlineLarge),
+                        const Spacer(),
+                        IconButton(
+                          icon: const Icon(Icons.refresh_rounded),
+                          onPressed: _refreshData,
+                          tooltip: '刷新',
+                        ),
+                        ValueListenableBuilder<UserProfile>(
                         valueListenable: ProfileStore.profile,
                         builder: (context, profile, _) {
                           return GestureDetector(
@@ -105,7 +167,8 @@ class GrowthPage extends StatelessWidget {
                     delay: 220,
                     child: TodayLearningCard(data: data.todayLearning),
                   ),
-                ],
+                  ],
+                ),
               );
             },
           ),

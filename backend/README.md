@@ -52,6 +52,13 @@ npm run dev
 默认监听 **3002**（与 starknow-ai-proxy 的 3001 区分）。  
 在 App 内将「服务地址」设为 `http://localhost:3002` 即可连到本后端。
 
+**若报错 `EADDRINUSE: address already in use :::3002`**：说明 3002 已被占用（多为上次未退出的 node 进程）。本机执行：
+```bash
+lsof -i :3002    # 查看占用进程 PID
+kill -9 <PID>    # 将 <PID> 换成上面看到的进程号
+```
+或改用其他端口：在 `.env` 中设置 `PORT=3003`，再 `npm start`（App 内服务地址改为 `http://localhost:3003`）。
+
 成长页接口详细设计见 [docs/growth-api.md](docs/growth-api.md)。
 
 ## 目录结构
