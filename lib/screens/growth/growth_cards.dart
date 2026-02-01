@@ -18,16 +18,41 @@ IconData _iconForKey(String key) {
   }
 }
 
-/// 每日提醒条
+/// 每日提醒条（支持点击时间修改提醒时间）
 class ReminderBar extends StatelessWidget {
-  const ReminderBar({super.key, required this.data});
+  const ReminderBar({super.key, required this.data, this.onEditTime});
 
   final ReminderData data;
+  /// 点击提醒时间时回调，用于弹出时间选择并保存
+  final VoidCallback? onEditTime;
 
   @override
   Widget build(BuildContext context) {
     const reminderColor = Color(0xFFFF9F1C);
     const bgColor = Color(0xFFFFF8ED);
+    final timeChip = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2)),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            data.reminderTime,
+            style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFFFF9F1C), fontSize: 15),
+          ),
+          if (onEditTime != null) ...[
+            const SizedBox(width: 4),
+            Icon(Icons.edit_rounded, size: 16, color: reminderColor.withOpacity(0.8)),
+          ],
+        ],
+      ),
+    );
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -66,20 +91,13 @@ class ReminderBar extends StatelessWidget {
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF2B2B2B)),
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2)),
-                  ],
-                ),
-                child: Text(
-                  data.reminderTime,
-                  style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFFFF9F1C), fontSize: 15),
-                ),
-              ),
+              if (onEditTime != null)
+                GestureDetector(
+                  onTap: onEditTime,
+                  child: timeChip,
+                )
+              else
+                timeChip,
             ],
           ),
           const SizedBox(height: 14),

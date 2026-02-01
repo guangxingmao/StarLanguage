@@ -70,6 +70,18 @@ function routes(app) {
            VALUES ($1, $2, $3, 0, $4, $4)`,
           [phone, phone, '星知小探险家', now]
         );
+        await pool.query(
+          `INSERT INTO growth_reminder (phone, reminder_time, message, updated_at)
+           VALUES ($1, '20:00', '今天还差 4 项打卡，加油！', $2)
+           ON CONFLICT (phone) DO NOTHING`,
+          [phone, now]
+        );
+        await pool.query(
+          `INSERT INTO growth_stats (phone, streak_days, accuracy_percent, badge_count, weekly_done, weekly_total, updated_at)
+           VALUES ($1, 0, 0, 0, 0, 4, $2)
+           ON CONFLICT (phone) DO NOTHING`,
+          [phone, now]
+        );
         userRow = await pool.query(
           'SELECT phone_number, name, avatar_index, avatar_base64 FROM users WHERE phone = $1',
           [phone]

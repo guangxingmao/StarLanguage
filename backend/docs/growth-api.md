@@ -28,21 +28,21 @@
 
 ---
 
-## 2. PATCH /growth/reminder — 更新每日提醒设置
+## 2. PATCH /growth/reminder — 更新每日提醒设置（含修改提醒时间）
 
 **Body**：
 
 ```json
 {
   "reminderTime": "20:00",
-  "message": "今天还差 3 项打卡，加油！"
+  "message": "今天还差 4 项打卡，加油！"
 }
 ```
 
-- `reminderTime`：提醒时间，如 "20:00"。
-- `message`：可选，自定义提示文案；不传则 GET /growth 时可根据任务完成数生成默认文案。
+- `reminderTime`：提醒时间，格式 `"HH:mm"`（如 "20:00"）。前端时间选择器选好后传此字段即可。
+- `message`：可选，自定义提示文案；不传则保留原值，GET /growth 时也可根据任务完成数生成默认文案。
 
-**响应**：`{ "ok": true, "reminderTime": "20:00", "message": "..." }` 或仅返回 200。
+**响应**：`{ "ok": true, "reminderTime": "20:00", "message": "..." }`。
 
 ---
 

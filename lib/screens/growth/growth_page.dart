@@ -44,6 +44,36 @@ class _GrowthPageState extends State<GrowthPage> {
     });
   }
 
+  /// 解析 "HH:mm" 为 TimeOfDay，无效则默认 20:00
+  TimeOfDay _parseReminderTime(String reminderTime) {
+    final parts = reminderTime.split(':');
+    final hour = (parts.isNotEmpty ? int.tryParse(parts[0]) : null) ?? 20;
+    final minute = (parts.length > 1 ? int.tryParse(parts[1]) : null) ?? 0;
+    return TimeOfDay(hour: hour.clamp(0, 23), minute: minute.clamp(0, 59));
+  }
+
+  /// 打开每日提醒时间选择，保存后刷新
+  Future<void> _openReminderTimePicker(BuildContext context, String currentTime) async {
+    final initial = _parseReminderTime(currentTime);
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: initial,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: Theme.of(context).colorScheme.copyWith(primary: const Color(0xFFFF9F1C)),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked == null || !mounted) return;
+    final newTime =
+        '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+    final ok = await GrowthDataRepository.updateReminder(reminderTime: newTime);
+    if (ok && mounted) _refreshData();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Stack(
@@ -137,7 +167,10 @@ class _GrowthPageState extends State<GrowthPage> {
                   const SizedBox(height: 12),
                   Reveal(
                     delay: 60,
-                    child: ReminderBar(data: data.reminder),
+                    child: ReminderBar(
+                      data: data.reminder,
+                      onEditTime: () => _openReminderTimePicker(context, data.reminder.reminderTime),
+                    ),
                   ),
                   const SizedBox(height: 18),
                   Reveal(

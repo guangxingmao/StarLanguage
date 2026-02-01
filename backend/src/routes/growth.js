@@ -5,9 +5,10 @@ function todayKey() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// 打卡固定 4 项（与表默认一致）
 const DAILY_TASK_TEMPLATE = [
   { id: 'school', iconKey: 'school', label: '学习一个新知识点', completed: false },
-  { id: 'video', iconKey: 'video', label: '观看一个视频或图文', completed: false },
+  { id: 'video', iconKey: 'video', label: '观看一个视频或者图文', completed: false },
   { id: 'arena', iconKey: 'arena', label: '参与一次擂台', completed: false },
   { id: 'forum', iconKey: 'forum', label: '参与一次社群讨论', completed: false },
 ];
@@ -34,11 +35,11 @@ async function getReminder(phone) {
   const now = Date.now();
   await pool.query(
     `INSERT INTO growth_reminder (phone, reminder_time, message, updated_at)
-     VALUES ($1, '20:00', '今天还差 3 项打卡，加油！', $2)
+     VALUES ($1, '20:00', '今天还差 4 项打卡，加油！', $2)
      ON CONFLICT (phone) DO NOTHING`,
     [phone, now]
   );
-  return { reminderTime: '20:00', message: '今天还差 3 项打卡，加油！' };
+  return { reminderTime: '20:00', message: '今天还差 4 项打卡，加油！' };
 }
 
 async function getStats(phone) {
@@ -53,17 +54,17 @@ async function getStats(phone) {
       accuracyPercent: row.accuracy_percent ?? 0,
       badgeCount: row.badge_count ?? 0,
       weeklyDone: row.weekly_done ?? 0,
-      weeklyTotal: row.weekly_total ?? 5,
+      weeklyTotal: row.weekly_total ?? 4,
     };
   }
   const now = Date.now();
   await pool.query(
     `INSERT INTO growth_stats (phone, streak_days, accuracy_percent, badge_count, weekly_done, weekly_total, updated_at)
-     VALUES ($1, 0, 0, 0, 0, 5, $2)
+     VALUES ($1, 0, 0, 0, 0, 4, $2)
      ON CONFLICT (phone) DO NOTHING`,
     [phone, now]
   );
-  return { streakDays: 0, accuracyPercent: 0, badgeCount: 0, weeklyDone: 0, weeklyTotal: 5 };
+  return { streakDays: 0, accuracyPercent: 0, badgeCount: 0, weeklyDone: 0, weeklyTotal: 4 };
 }
 
 async function getDailyTaskCompletion(phone) {
@@ -190,14 +191,14 @@ function routes(app) {
         accuracy = 0,
         badge = 0,
         weeklyDone = 0,
-        weeklyTotal = 5;
+        weeklyTotal = 4;
       if (r.rows.length) {
         const row = r.rows[0];
         streak = row.streak_days ?? 0;
         accuracy = row.accuracy_percent ?? 0;
         badge = row.badge_count ?? 0;
         weeklyDone = row.weekly_done ?? 0;
-        weeklyTotal = row.weekly_total ?? 5;
+        weeklyTotal = row.weekly_total ?? 4;
       }
       if (body.streakDays !== undefined) streak = Number(body.streakDays) || 0;
       if (body.accuracyPercent !== undefined) accuracy = Math.min(100, Math.max(0, Number(body.accuracyPercent) || 0));
