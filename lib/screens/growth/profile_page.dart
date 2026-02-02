@@ -9,6 +9,7 @@ import '../../data/arena_data.dart';
 import '../../data/demo_data.dart';
 import '../../data/profile.dart';
 import '../../widgets/starry_background.dart';
+import 'profile_card.dart';
 
 /// 个人主页
 class ProfilePage extends StatelessWidget {
@@ -41,7 +42,7 @@ class ProfilePage extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 12),
-                const ProfileHeader(showEdit: true),
+                const ProfileCard(),
                 const SizedBox(height: 16),
                 Container(
                   padding: const EdgeInsets.all(16),
@@ -197,88 +198,6 @@ class ProfilePage extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-/// 个人页头部（头像 + 昵称 + 等级/学习时长）
-class ProfileHeader extends StatelessWidget {
-  const ProfileHeader({super.key, this.showEdit});
-
-  final bool? showEdit;
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<UserProfile>(
-      valueListenable: ProfileStore.profile,
-      builder: (context, profile, _) {
-        return Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(22),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 16,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Stack(
-                children: [
-                  Container(
-                    width: 64,
-                    height: 64,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: avatarColors[profile.avatarIndex % avatarColors.length]
-                              .withOpacity(0.4),
-                          blurRadius: 16,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: buildAvatar(
-                      profile.avatarIndex,
-                      size: 64,
-                      base64Image: profile.avatarBase64,
-                    ),
-                  ),
-                  if (showEdit == true)
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(Icons.edit_rounded, size: 14),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(profile.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 6),
-                    const Text('Lv.3 · 今日已学习 18 分钟'),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 }

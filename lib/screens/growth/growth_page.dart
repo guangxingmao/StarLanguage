@@ -5,7 +5,6 @@ import '../../data/profile.dart';
 import '../../widgets/reveal.dart';
 import '../../widgets/starry_background.dart';
 import 'growth_cards.dart';
-import 'profile_card.dart';
 import 'profile_page.dart';
 
 /// 成长页：我的、每日提醒、打卡、今日学习（数据来自 GET /growth 接口）
@@ -116,11 +115,6 @@ class _GrowthPageState extends State<GrowthPage> {
                       children: [
                         Text('成长', style: Theme.of(context).textTheme.headlineLarge),
                         const Spacer(),
-                        IconButton(
-                          icon: const Icon(Icons.refresh_rounded),
-                          onPressed: _refreshData,
-                          tooltip: '刷新',
-                        ),
                         ValueListenableBuilder<UserProfile>(
                         valueListenable: ProfileStore.profile,
                         builder: (context, profile, _) {
@@ -154,8 +148,6 @@ class _GrowthPageState extends State<GrowthPage> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  const ProfileCard(),
                   const SizedBox(height: 20),
                   Text(
                     '每日提醒与打卡进度',
@@ -184,7 +176,7 @@ class _GrowthPageState extends State<GrowthPage> {
                     delay: 180,
                     child: DailyTasksCard(tasks: data.dailyTasks),
                   ),
-                  if (data.growthCards != null && data.growthCards!.isNotEmpty) ...[
+                  if (data.growthCards!.isNotEmpty) ...[
                     const SizedBox(height: 18),
                     Text('学习与挑战', style: Theme.of(context).textTheme.titleLarge),
                     const SizedBox(height: 12),
