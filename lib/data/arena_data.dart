@@ -1,4 +1,10 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+
+import 'ai_proxy.dart';
+import 'profile.dart';
 
 class ArenaStats {
   const ArenaStats({
@@ -202,6 +208,42 @@ class ArenaPageData {
 class ArenaDataRepository {
   static Future<ArenaPageData> load() async {
     return Future.value(ArenaPageData.fallback());
+  }
+}
+
+/// 成就墙数据：从 GET /arena/stats 拉取（个人页成就墙用）
+class ArenaStatsRepository {
+  static Future<ArenaStats> load() async {
+    final token = ProfileStore.authToken;
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    if (token == null || token.isEmpty) return ArenaStats.initial();
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/arena/stats'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (res.statusCode != 200) return ArenaStats.initial();
+      final data = jsonDecode(res.body) as Map<String, dynamic>?;
+      if (data == null) return ArenaStats.initial();
+      final topicBestRaw = data['topicBest'];
+      final Map<String, int> topicBest = {};
+      if (topicBestRaw is Map) {
+        for (final e in topicBestRaw.entries) {
+          final v = e.value;
+          if (v is num) topicBest[e.key.toString()] = v.toInt();
+        }
+      }
+      return ArenaStats(
+        totalScore: (data['totalScore'] as num?)?.toInt() ?? 0,
+        totalCorrect: 0,
+        matches: (data['matches'] as num?)?.toInt() ?? 0,
+        maxStreak: (data['maxStreak'] as num?)?.toInt() ?? 0,
+        bestAccuracy: (data['bestAccuracy'] as num?)?.toDouble() ?? 0,
+        topicBest: topicBest,
+      );
+    } catch (_) {
+      return ArenaStats.initial();
+    }
   }
 }
 

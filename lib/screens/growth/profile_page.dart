@@ -7,13 +7,69 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../data/arena_data.dart';
 import '../../data/demo_data.dart';
+import '../../data/growth_data.dart';
 import '../../data/profile.dart';
+import '../../data/social_data.dart';
 import '../../widgets/starry_background.dart';
 import 'profile_card.dart';
 
-/// 个人主页
-class ProfilePage extends StatelessWidget {
+/// 个人主页（等级、基础信息、成就墙、个人圈、交友、设置均来自接口）
+class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
+
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  late Future<void> _meFuture;
+  late Future<ArenaStats> _arenaFuture;
+  late Future<List<FeedItem>> _feedFuture;
+  static const int _levelExpMax = 100;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  void _load() {
+    _meFuture = ProfileStore.fetchMe();
+    _arenaFuture = ArenaStatsRepository.load();
+    _feedFuture = SocialFeedRepository.load();
+  }
+
+  Future<void> _openReminderTimePicker(BuildContext context, String currentTime) async {
+    final parts = currentTime.split(':');
+    final hour = (parts.isNotEmpty ? int.tryParse(parts[0]) : null) ?? 20;
+    final minute = (parts.length > 1 ? int.tryParse(parts[1]) : null) ?? 0;
+    final initial = TimeOfDay(hour: hour.clamp(0, 23), minute: minute.clamp(0, 59));
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: initial,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: Theme.of(context).colorScheme.copyWith(primary: const Color(0xFFFF9F1C)),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked == null || !mounted) return;
+    final newTime =
+        '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+    final ok = await GrowthDataRepository.updateReminder(reminderTime: newTime);
+    if (ok && mounted) {
+      await ProfileStore.fetchMe();
+      setState(() {});
+    }
+  }
+
+  String _privacyLabel(String privacy) {
+    if (privacy == 'default') return '默认';
+    return privacy;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -23,177 +79,249 @@ class ProfilePage extends StatelessWidget {
         children: [
           const StarryBackground(),
           SafeArea(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-              children: [
-                Row(
+            child: FutureBuilder<void>(
+              future: _meFuture,
+              builder: (context, meSnap) {
+                return ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
                   children: [
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.arrow_back_rounded),
+                    Row(
+                      children: [
+                        IconButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: const Icon(Icons.arrow_back_rounded),
+                        ),
+                        const SizedBox(width: 6),
+                        Text('个人主页', style: Theme.of(context).textTheme.headlineLarge),
+                        const Spacer(),
+                        TextButton(
+                          onPressed: () => showEditProfileSheet(context),
+                          child: const Text('编辑资料'),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 6),
-                    Text('个人主页', style: Theme.of(context).textTheme.headlineLarge),
-                    const Spacer(),
-                    TextButton(
-                      onPressed: () => showEditProfileSheet(context),
-                      child: const Text('编辑资料'),
+                    const SizedBox(height: 12),
+                    const ProfileCard(),
+                    const SizedBox(height: 16),
+                    ValueListenableBuilder<UserProfile>(
+                      valueListenable: ProfileStore.profile,
+                      builder: (context, profile, _) {
+                        final levelTitle = profile.levelTitle?.isNotEmpty == true
+                            ? profile.levelTitle!
+                            : '星光探索者';
+                        final progress = _levelExpMax > 0
+                            ? (profile.levelExp / _levelExpMax).clamp(0.0, 1.0)
+                            : 0.0;
+                        return Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(22),
+                            border: Border.all(color: const Color(0xFFFFD166)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('等级'),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Lv.${profile.level} · $levelTitle',
+                                style: const TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                              const SizedBox(height: 10),
+                              LinearProgressIndicator(
+                                value: progress,
+                                minHeight: 8,
+                                backgroundColor: const Color(0xFFFFEAC0),
+                                valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFF9F1C)),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    ValueListenableBuilder<UserProfile>(
+                      valueListenable: ProfileStore.profile,
+                      builder: (context, profile, _) {
+                        return Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(22),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 16,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('基础信息', style: TextStyle(fontWeight: FontWeight.w700)),
+                              const SizedBox(height: 10),
+                              _InfoRow(label: '昵称', value: profile.name),
+                              _InfoRow(label: '年龄', value: profile.age ?? '—'),
+                              _InfoRow(label: '兴趣', value: profile.interests ?? '—'),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    Text('成就墙', style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 12),
+                    FutureBuilder<ArenaStats>(
+                      future: _arenaFuture,
+                      builder: (context, snap) {
+                        final stats = snap.data ?? ArenaStats.initial();
+                        final progress = _buildAchievementProgress(data, stats);
+                        if (progress.isEmpty) {
+                          return Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: const Color(0xFFE9E0C9)),
+                            ),
+                            child: const Text('完成一次擂台挑战即可解锁成就～'),
+                          );
+                        }
+                        return AchievementWall(items: progress);
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    FutureBuilder<List<FeedItem>>(
+                      future: _feedFuture,
+                      builder: (context, snap) {
+                        final items = snap.data ?? [];
+                        return Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(22),
+                            border: Border.all(color: const Color(0xFFE9E0C9)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('个人圈', style: TextStyle(fontWeight: FontWeight.w700)),
+                              const SizedBox(height: 10),
+                              if (items.isEmpty)
+                                const Padding(
+                                  padding: EdgeInsets.all(12),
+                                  child: Text('暂无动态，快去学习并发布吧～'),
+                                )
+                              else
+                                ...items.map(
+                                  (item) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 10),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.all(12),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFFFF8E6),
+                                            borderRadius: BorderRadius.circular(16),
+                                          ),
+                                          child: Text(item.content),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Row(
+                                          children: [
+                                            Icon(Icons.favorite_border_rounded, size: 18),
+                                            const SizedBox(width: 6),
+                                            Text('${item.likeCount}'),
+                                            const SizedBox(width: 16),
+                                            Icon(Icons.chat_bubble_outline_rounded, size: 18),
+                                            const SizedBox(width: 6),
+                                            Text('${item.commentCount}'),
+                                            const Spacer(),
+                                            const Text(
+                                              '发布动态',
+                                              style: TextStyle(color: Color(0xFFFF9F1C)),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    ValueListenableBuilder<UserProfile>(
+                      valueListenable: ProfileStore.profile,
+                      builder: (context, profile, _) {
+                        return Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(22),
+                            border: Border.all(color: const Color(0xFFE9E0C9)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('交友', style: TextStyle(fontWeight: FontWeight.w700)),
+                              const SizedBox(height: 10),
+                              const _SettingRow(label: '添加好友', value: '搜索或扫码'),
+                              _SettingRow(
+                                label: '好友申请',
+                                value: profile.pendingRequestCount > 0
+                                    ? '${profile.pendingRequestCount} 条新申请'
+                                    : '暂无',
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    ValueListenableBuilder<UserProfile>(
+                      valueListenable: ProfileStore.profile,
+                      builder: (context, profile, _) {
+                        return Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(22),
+                            border: Border.all(color: const Color(0xFFE9E0C9)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('设置', style: TextStyle(fontWeight: FontWeight.w700)),
+                              const SizedBox(height: 10),
+                              GestureDetector(
+                                onTap: () => _openReminderTimePicker(
+                                  context,
+                                  profile.reminderTime,
+                                ),
+                                child: _SettingRow(
+                                  label: '学习提醒',
+                                  value: profile.reminderTime,
+                                ),
+                              ),
+                              _SettingRow(
+                                label: '隐私',
+                                value: _privacyLabel(profile.privacy),
+                              ),
+                              const _SettingRow(label: '账户绑定', value: '未绑定'),
+                            ],
+                          ),
+                        );
+                      },
                     ),
                   ],
-                ),
-                const SizedBox(height: 12),
-                const ProfileCard(),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(22),
-                    border: Border.all(color: const Color(0xFFFFD166)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text('等级'),
-                      SizedBox(height: 6),
-                      Text('Lv.3 · 星光探索者', style: TextStyle(fontWeight: FontWeight.w700)),
-                      SizedBox(height: 10),
-                      LinearProgressIndicator(
-                        value: 0.62,
-                        minHeight: 8,
-                        backgroundColor: Color(0xFFFFEAC0),
-                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFF9F1C)),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(22),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 16,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: ValueListenableBuilder<UserProfile>(
-                    valueListenable: ProfileStore.profile,
-                    builder: (context, profile, _) {
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('基础信息', style: TextStyle(fontWeight: FontWeight.w700)),
-                          const SizedBox(height: 10),
-                          _InfoRow(label: '昵称', value: profile.name),
-                          const _InfoRow(label: '年龄', value: '9 岁'),
-                          const _InfoRow(label: '兴趣', value: '篮球 / 科学'),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text('成就墙', style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(height: 12),
-                ValueListenableBuilder<ArenaStats>(
-                  valueListenable: ArenaStatsStore.stats,
-                  builder: (context, stats, _) {
-                    final progress = _buildAchievementProgress(data, stats);
-                    if (progress.isEmpty) {
-                      return Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: const Color(0xFFE9E0C9)),
-                        ),
-                        child: const Text('完成一次擂台挑战即可解锁成就～'),
-                      );
-                    }
-                    return AchievementWall(items: progress);
-                  },
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(22),
-                    border: Border.all(color: const Color(0xFFE9E0C9)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('个人圈', style: TextStyle(fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 10),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFF8E6),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: const Text('今天学会了"为什么天空是蓝色的"～'),
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: const [
-                          Icon(Icons.favorite_border_rounded, size: 18),
-                          SizedBox(width: 6),
-                          Text('12'),
-                          SizedBox(width: 16),
-                          Icon(Icons.chat_bubble_outline_rounded, size: 18),
-                          SizedBox(width: 6),
-                          Text('3'),
-                          Spacer(),
-                          Text('发布动态', style: TextStyle(color: Color(0xFFFF9F1C))),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(22),
-                    border: Border.all(color: const Color(0xFFE9E0C9)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text('交友', style: TextStyle(fontWeight: FontWeight.w700)),
-                      SizedBox(height: 10),
-                      _SettingRow(label: '添加好友', value: '搜索或扫码'),
-                      _SettingRow(label: '好友申请', value: '2 条新申请'),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(22),
-                    border: Border.all(color: const Color(0xFFE9E0C9)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text('设置', style: TextStyle(fontWeight: FontWeight.w700)),
-                      SizedBox(height: 10),
-                      _SettingRow(label: '学习提醒', value: '20:00'),
-                      _SettingRow(label: '隐私', value: '默认'),
-                      _SettingRow(label: '账户绑定', value: '未绑定'),
-                    ],
-                  ),
-                ),
-              ],
+                );
+              },
             ),
           ),
         ],

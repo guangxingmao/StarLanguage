@@ -16,6 +16,15 @@ class UserProfile {
     required this.avatarBase64,
     this.phoneNumber,
     this.isLoggedIn = false,
+    this.age,
+    this.interests,
+    this.level = 1,
+    this.levelTitle,
+    this.levelExp = 0,
+    this.privacy = 'default',
+    this.reminderTime = '20:00',
+    this.friendCount = 0,
+    this.pendingRequestCount = 0,
   });
 
   final String name;
@@ -23,6 +32,15 @@ class UserProfile {
   final String? avatarBase64;
   final String? phoneNumber;
   final bool isLoggedIn;
+  final String? age;
+  final String? interests;
+  final int level;
+  final String? levelTitle;
+  final int levelExp;
+  final String privacy;
+  final String reminderTime;
+  final int friendCount;
+  final int pendingRequestCount;
 
   UserProfile copyWith({
     String? name,
@@ -30,6 +48,15 @@ class UserProfile {
     String? avatarBase64,
     String? phoneNumber,
     bool? isLoggedIn,
+    String? age,
+    String? interests,
+    int? level,
+    String? levelTitle,
+    int? levelExp,
+    String? privacy,
+    String? reminderTime,
+    int? friendCount,
+    int? pendingRequestCount,
   }) {
     return UserProfile(
       name: name ?? this.name,
@@ -37,6 +64,15 @@ class UserProfile {
       avatarBase64: avatarBase64 ?? this.avatarBase64,
       phoneNumber: phoneNumber ?? this.phoneNumber,
       isLoggedIn: isLoggedIn ?? this.isLoggedIn,
+      age: age ?? this.age,
+      interests: interests ?? this.interests,
+      level: level ?? this.level,
+      levelTitle: levelTitle ?? this.levelTitle,
+      levelExp: levelExp ?? this.levelExp,
+      privacy: privacy ?? this.privacy,
+      reminderTime: reminderTime ?? this.reminderTime,
+      friendCount: friendCount ?? this.friendCount,
+      pendingRequestCount: pendingRequestCount ?? this.pendingRequestCount,
     );
   }
 
@@ -144,6 +180,15 @@ class ProfileStore {
         avatarIndex: (data['avatarIndex'] as num?)?.toInt() ?? profile.value.avatarIndex,
         avatarBase64: data['avatarBase64'] as String?,
         isLoggedIn: true,
+        age: data['age'] as String?,
+        interests: data['interests'] as String?,
+        level: (data['level'] as num?)?.toInt() ?? 1,
+        levelTitle: data['levelTitle'] as String?,
+        levelExp: (data['levelExp'] as num?)?.toInt() ?? 0,
+        privacy: data['privacy'] as String? ?? 'default',
+        reminderTime: data['reminderTime'] as String? ?? '20:00',
+        friendCount: (data['friendCount'] as num?)?.toInt() ?? 0,
+        pendingRequestCount: (data['pendingRequestCount'] as num?)?.toInt() ?? 0,
       );
       profile.value = next;
       try {
@@ -199,6 +244,12 @@ class ProfileStore {
         'avatarIndex': next.avatarIndex,
         'avatarBase64': next.avatarBase64,
         'phoneNumber': next.phoneNumber,
+        if (next.age != null) 'age': next.age,
+        if (next.interests != null) 'interests': next.interests,
+        'level': next.level,
+        if (next.levelTitle != null) 'levelTitle': next.levelTitle,
+        'levelExp': next.levelExp,
+        'privacy': next.privacy,
       };
       final res = await http.patch(
         Uri.parse('$baseUrl/user/me'),
@@ -239,5 +290,10 @@ class ProfileStore {
     } on MissingPluginException {}
     final next = profile.value.copyWith(isLoggedIn: false);
     await update(next);
+  }
+
+  /// 从服务端拉取完整资料（个人页进入时调用）
+  static Future<void> fetchMe() async {
+    await _fetchUserMe();
   }
 }

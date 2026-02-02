@@ -11,8 +11,9 @@ services:
     environment:
       PORT: 3001
       TENCENT_REGION: ${TENCENT_REGION:-ap-guangzhou}
-      TENCENT_SECRET_ID: ${TENCENT_SECRET_ID}
-      TENCENT_SECRET_KEY: ${TENCENT_SECRET_KEY}
+      # 未配置时传空字符串，避免 WARN；实际使用前请复制 .env.example 为 .env 并填写
+      TENCENT_SECRET_ID: ${TENCENT_SECRET_ID:-}
+      TENCENT_SECRET_KEY: ${TENCENT_SECRET_KEY:-}
       # 数据库连接串（后续在 server 中接入时使用，当前未改 server.js）
       DATABASE_URL: postgres://${POSTGRES_USER:-starknow}:${POSTGRES_PASSWORD:-starknow}@db:5432/${POSTGRES_DB:-starknow}
     depends_on:
@@ -34,6 +35,8 @@ services:
       - ./backend/sql/002_growth_schema.sql:/docker-entrypoint-initdb.d/002_growth_schema.sql:ro
       - ./backend/sql/002_seed_user.sql:/docker-entrypoint-initdb.d/002_seed_user.sql:ro
       - ./backend/sql/003_growth_seed.sql:/docker-entrypoint-initdb.d/003_growth_seed.sql:ro
+      - ./backend/sql/004_user_profile_ext.sql:/docker-entrypoint-initdb.d/004_user_profile_ext.sql:ro
+      - ./backend/sql/005_arena_schema.sql:/docker-entrypoint-initdb.d/005_arena_schema.sql:ro
     ports:
       - "${POSTGRES_PORT:-5433}:5432"
     healthcheck:

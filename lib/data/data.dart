@@ -9,3 +9,4 @@ export 'arena_data.dart';
 export 'community_page_data.dart';
 export 'growth_data.dart';
 export 'learning_data.dart';
+export 'social_data.dart';

@@ -1,5 +1,6 @@
 -- 星知后端数据库表结构（与 App 接口对应）
 -- 与项目根 docker-compose 中 db 的 init 脚本一致，可共用同一库 starknow。
+-- 个人主页扩展字段（age, interests, level, level_title, level_exp, privacy）见 004_user_profile_ext.sql。
 
 CREATE TABLE IF NOT EXISTS auth_codes (
   phone       VARCHAR(20) PRIMARY KEY,

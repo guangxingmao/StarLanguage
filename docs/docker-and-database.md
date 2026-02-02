@@ -19,12 +19,9 @@
 cp .env.example .env
 ```
 
-用编辑器打开 `.env`，**至少**填写腾讯云密钥（AI 对话/识图用）：
-
-```env
-TENCENT_SECRET_ID=你的 SecretId
-TENCENT_SECRET_KEY=你的 SecretKey
-```
+用编辑器打开 `.env`：
+- **要用 AI 对话/识图**：填写腾讯云密钥 `TENCENT_SECRET_ID`、`TENCENT_SECRET_KEY`。
+- **仅跑数据库、暂不用 AI**：可保留这两项为空（或删掉等号后的内容），避免 `docker compose` 报 `The "TENCENT_SECRET_ID" variable is not set` 的 WARN。
 
 数据库相关可先不改，默认即可：用户/密码/库名均为 `starknow`。
 
@@ -70,6 +67,10 @@ docker compose logs app
 | 只重启 app | `docker compose up -d --build app` |
 
 `docker compose down` 只会删容器，**数据库数据**在 volume 里会保留，下次 `up -d` 数据仍在。
+
+**常见提示：**
+- **`The "TENCENT_SECRET_ID" variable is not set`**：未配置 `.env` 或未写 `TENCENT_SECRET_ID`/`TENCENT_SECRET_KEY`。复制 `.env.example` 为 `.env` 并至少保留这两项（可为空），WARN 即消失。
+- **`The input device is not a TTY`**：在非交互环境（如 IDE 终端、脚本）里执行 `docker compose run`/`exec` 时可能出现，一般可忽略；若需去掉提示，可加 `-T`，例如：`docker compose run -T app node -e "console.log(1)"`。
 
 ---
 
