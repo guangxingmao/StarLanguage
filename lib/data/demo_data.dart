@@ -7,19 +7,33 @@ import '../utils/color_util.dart';
 import 'community_data.dart';
 
 class Topic {
-  const Topic({required this.id, required this.name});
+  const Topic({
+    required this.id,
+    required this.name,
+    this.description,
+    this.memberCount,
+  });
 
   final String id;
   final String name;
+  final String? description;
+  final int? memberCount;
 
   factory Topic.fromJson(Map<String, dynamic> json) {
     return Topic(
       id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? '',
+      description: json['description'] as String?,
+      memberCount: (json['memberCount'] as num?)?.toInt(),
     );
   }
 
-  Map<String, dynamic> toJson() => {'id': id, 'name': name};
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        if (description != null) 'description': description,
+        if (memberCount != null) 'memberCount': memberCount,
+      };
 }
 
 class ContentItem {

@@ -16,6 +16,8 @@ class CommunityPost {
     required this.comments,
     required this.accent,
     this.imageBase64,
+    this.imageUrl,
+    this.communityId,
   });
 
   final String id;
@@ -29,20 +31,28 @@ class CommunityPost {
   final int comments;
   final Color accent;
   final String? imageBase64;
+  final String? imageUrl;
+  /// 所属社群 id，用于跳转圈子页
+  final String? communityId;
 
   factory CommunityPost.fromJson(Map<String, dynamic> json) {
+    final circle = json['circle'] as String? ?? '';
     return CommunityPost(
-      id: json['id'] as String? ?? '',
+      id: json['id']?.toString() ?? '',
       title: json['title'] as String? ?? '',
       summary: json['summary'] as String? ?? '',
       content: json['content'] as String? ?? '',
-      circle: json['circle'] as String? ?? '',
+      circle: circle,
       author: json['author'] as String? ?? '',
       timeLabel: json['timeLabel'] as String? ?? '',
       likes: (json['likes'] as num?)?.toInt() ?? 0,
       comments: (json['comments'] as num?)?.toInt() ?? 0,
-      accent: parseColor(json['accent'] as String? ?? '#BFD7FF'),
+      accent: (json['accent'] is String && (json['accent'] as String).isNotEmpty)
+          ? parseColor(json['accent'] as String)
+          : CommunityStore.accentForCircle(circle),
       imageBase64: json['imageBase64'] as String?,
+      imageUrl: json['imageUrl'] as String?,
+      communityId: json['communityId'] as String?,
     );
   }
 
@@ -58,6 +68,8 @@ class CommunityPost {
         'comments': comments,
         'accent': colorToHex(accent),
         if (imageBase64 != null) 'imageBase64': imageBase64,
+        if (imageUrl != null) 'imageUrl': imageUrl,
+        if (communityId != null) 'communityId': communityId,
       };
 }
 
@@ -101,7 +113,7 @@ class CommunityStore {
     String? imageBase64,
   }) {
     final summary = content.length > 28 ? '${content.substring(0, 28)}…' : content;
-    final accent = _accentForCircle(circle);
+    final accent = accentForCircle(circle);
     final item = CommunityPost(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       title: title,
@@ -144,7 +156,7 @@ class CommunityStore {
     comments.value = {...comments.value, postId: list};
   }
 
-  static Color _accentForCircle(String circle) {
+  static Color accentForCircle(String circle) {
     switch (circle) {
       case '历史':
         return const Color(0xFF5DADE2);

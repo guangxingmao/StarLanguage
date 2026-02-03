@@ -22,4 +22,19 @@ async function requireAuth(req, res, next) {
   }
 }
 
-module.exports = { requireAuth };
+/** 可选认证：有有效 token 时设置 req.auth，无 token 或无效时不报错 */
+async function optionalAuth(req, res, next) {
+  const auth = req.headers.authorization;
+  const token = auth && auth.startsWith('Bearer ') ? auth.slice(7).trim() : null;
+  if (!token) return next();
+  try {
+    const r = await pool.query(
+      'SELECT phone FROM auth_tokens WHERE token = $1',
+      [token]
+    );
+    if (r.rows.length) req.auth = { phone: r.rows[0].phone };
+  } catch (_) {}
+  next();
+}
+
+module.exports = { requireAuth, optionalAuth };

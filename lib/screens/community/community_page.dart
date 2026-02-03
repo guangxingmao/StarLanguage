@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -6,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../data/community_data.dart';
 import '../../data/community_page_data.dart';
+import '../../data/demo_data.dart';
 import '../../data/profile.dart';
 import '../../widgets/reveal.dart';
 import '../../widgets/starry_background.dart';
@@ -22,95 +24,106 @@ class CommunityPage extends StatelessWidget {
         const StarryBackground(),
         SafeArea(
           child: FutureBuilder<CommunityPageData>(
-            future: communityDataFuture,
+            future: CommunityDataRepository.load(),
             builder: (context, snapshot) {
               final pageData = snapshot.data ?? CommunityPageData.fallback();
-              if (snapshot.connectionState == ConnectionState.done && snapshot.hasData) {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  CommunityStore.seedFromData(pageData.posts);
-                  CommunityStore.seedCommentsFromData(pageData.comments);
-                });
-              }
-              return ValueListenableBuilder<List<CommunityPost>>(
-                valueListenable: CommunityStore.posts,
-                builder: (context, posts, _) {
-                  final hotPosts = posts.take(6).toList();
-                  final topics = pageData.topics;
-                  return ListView(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
+              final joined = pageData.joinedCommunities;
+              final hotPosts = pageData.hotPosts;
+              final circles = joined.map((t) => t.name).toList();
+              return ListView(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
+                children: [
+                  Row(
                     children: [
-                      Row(
-                        children: [
-                          Text('兴趣社群', style: Theme.of(context).textTheme.headlineLarge),
-                          const Spacer(),
-                          GestureDetector(
-                            onTap: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('加入新社群功能开发中')),
-                              );
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: const Color(0xFFE9E0C9)),
-                              ),
-                              child: const Icon(Icons.add_rounded, color: Color(0xFFFF9F1C)),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      const Text('和同好一起探索'),
-                      const SizedBox(height: 18),
-                      CommunityComposer(
-                        onCompose: () {
+                      Text('兴趣社群', style: Theme.of(context).textTheme.headlineLarge),
+                      const Spacer(),
+                      GestureDetector(
+                        onTap: () {
                           Navigator.of(context).push(
                             MaterialPageRoute(
-                              builder: (_) => TopicEditorPage(
-                                circles: topics.map((t) => t.name).toList(),
-                              ),
+                              builder: (_) => const JoinCommunityPage(),
                             ),
                           );
                         },
-                      ),
-                      const SizedBox(height: 18),
-                      Text('已加入', style: Theme.of(context).textTheme.titleLarge),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: topics.take(4).map((topic) {
-                          return GestureDetector(
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => CircleHomePage(circle: topic.name),
-                                ),
-                              );
-                            },
-                            child: TopicChip(label: '${topic.name}圈'),
-                          );
-                        }).toList(),
-                      ),
-                      const SizedBox(height: 18),
-                      Text('今日热门话题', style: Theme.of(context).textTheme.titleLarge),
-                      const SizedBox(height: 12),
-                      Reveal(
-                        delay: 140,
-                        child: CommunityMasonry(
-                          posts: hotPosts,
-                          onTap: (post) {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(builder: (_) => TopicDetailPage(post: post)),
-                            );
-                          },
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFE9E0C9)),
+                          ),
+                          child: const Icon(Icons.add_rounded, color: Color(0xFFFF9F1C)),
                         ),
                       ),
                     ],
-                  );
-                },
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('和同好一起探索'),
+                  const SizedBox(height: 18),
+                  CommunityComposer(
+                    onCompose: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => TopicEditorPage(
+                            circles: circles.isNotEmpty ? circles : ['其他'],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 18),
+                  Text('已加入', style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 40,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: joined.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 10),
+                      itemBuilder: (context, index) {
+                        final topic = joined[index];
+                        return GestureDetector(
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => CircleHomePage(
+                                  circleId: topic.id,
+                                  circleName: topic.name,
+                                ),
+                              ),
+                            );
+                          },
+                          child: TopicChip(label: '${topic.name}圈'),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text('今日热门话题', style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 12),
+                  if (pageData.error != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(pageData.error!, style: const TextStyle(color: Color(0xFF8A8370))),
+                    )
+                  else if (hotPosts.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 16),
+                      child: Text('暂无今日热门话题', style: TextStyle(color: Color(0xFF8A8370))),
+                    )
+                  else
+                    Reveal(
+                      delay: 140,
+                      child: CommunityMasonry(
+                        posts: hotPosts,
+                        onTap: (post) {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => TopicDetailPage(post: post)),
+                          );
+                        },
+                      ),
+                    ),
+                ],
               );
             },
           ),
@@ -322,7 +335,19 @@ class TopicPostCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(data.summary),
-            if (data.imageBase64 != null) ...[
+            if (data.imageUrl != null) ...[
+              const SizedBox(height: 10),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: Image.network(
+                  data.imageUrl!,
+                  height: 120,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const SizedBox(height: 120),
+                ),
+              ),
+            ] else if (data.imageBase64 != null) ...[
               const SizedBox(height: 10),
               ClipRRect(
                 borderRadius: BorderRadius.circular(14),
@@ -407,12 +432,92 @@ Future<void> showCommentSheet(BuildContext context) async {
   );
 }
 
-// ==================== 圈子 / 话题页 ====================
+// ==================== 加入新社群页 ====================
 
-class CircleHomePage extends StatelessWidget {
-  const CircleHomePage({super.key, required this.circle});
+class JoinCommunityPage extends StatefulWidget {
+  const JoinCommunityPage({super.key});
 
-  final String circle;
+  @override
+  State<JoinCommunityPage> createState() => _JoinCommunityPageState();
+}
+
+class _JoinCommunityPageState extends State<JoinCommunityPage> {
+  final TextEditingController _searchController = TextEditingController();
+  List<Topic> _list = [];
+  bool _loading = false;
+  int _loadSequence = 0;
+  Timer? _debounceTimer;
+  static const _debounceDuration = Duration(milliseconds: 350);
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(_onSearchChanged);
+    _loadAll();
+  }
+
+  void _onSearchChanged() {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(_debounceDuration, () {
+      if (!mounted) return;
+      final query = _searchController.text.trim();
+      if (query.isEmpty) {
+        _loadAll();
+        return;
+      }
+      _loadSearch(query);
+    });
+  }
+
+  /// 初始加载全部社群（不传 q）
+  Future<void> _loadAll() async {
+    final seq = ++_loadSequence;
+    setState(() => _loading = true);
+    final list = await CommunityDataRepository.loadAllCommunities(q: null);
+    if (!mounted || seq != _loadSequence) return;
+    setState(() { _list = list; _loading = false; });
+  }
+
+  /// 仅在有输入时调用：按关键词搜索，无结果时接口返回空数组
+  Future<void> _loadSearch(String query) async {
+    if (query.isEmpty) return;
+    final seq = ++_loadSequence;
+    setState(() => _loading = true);
+    final list = await CommunityDataRepository.loadAllCommunities(q: query);
+    if (!mounted || seq != _loadSequence) return;
+    setState(() { _list = list; _loading = false; });
+  }
+
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _join(Topic topic) async {
+    final ok = await CommunityDataRepository.joinCommunity(topic.id);
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('加入失败，请先登录')),
+      );
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('已加入 ${topic.name} 圈')),
+    );
+    Navigator.of(context).pop();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CircleHomePage(
+          circleId: topic.id,
+          circleName: topic.name,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -421,10 +526,128 @@ class CircleHomePage extends StatelessWidget {
         children: [
           const StarryBackground(),
           SafeArea(
-            child: ValueListenableBuilder<List<CommunityPost>>(
-              valueListenable: CommunityStore.posts,
-              builder: (context, posts, _) {
-                final circlePosts = posts.where((p) => p.circle == circle).toList();
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.arrow_back_rounded),
+                    ),
+                    const SizedBox(width: 6),
+                    Text('加入新社群', style: Theme.of(context).textTheme.headlineLarge),
+                  ],
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: '搜索社群名称…',
+                      prefixIcon: const Icon(Icons.search_rounded),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
+                    onSubmitted: (_) {
+                      final q = _searchController.text.trim();
+                      if (q.isEmpty) _loadAll(); else _loadSearch(q);
+                    },
+                  ),
+                ),
+                Expanded(
+                  child: _loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _list.isEmpty
+                          ? const Center(child: Text('暂无社群', style: TextStyle(color: Color(0xFF8A8370))))
+                          : ListView.builder(
+                              padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                              itemCount: _list.length,
+                              itemBuilder: (context, index) {
+                                final topic = _list[index];
+                                return Container(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: const Color(0xFFE9E0C9)),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              topic.name,
+                                              style: Theme.of(context).textTheme.titleMedium,
+                                            ),
+                                            if (topic.description != null && topic.description!.isNotEmpty) ...[
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                topic.description!,
+                                                style: const TextStyle(
+                                                  fontSize: 13,
+                                                  color: Color(0xFF8A8370),
+                                                ),
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ],
+                                            if (topic.memberCount != null) ...[
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                '${topic.memberCount} 人已加入',
+                                                style: const TextStyle(fontSize: 12, color: Color(0xFF8A8370)),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      FilledButton(
+                                        onPressed: () => _join(topic),
+                                        child: const Text('加入'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ==================== 圈子 / 话题页 ====================
+
+class CircleHomePage extends StatelessWidget {
+  const CircleHomePage({super.key, required this.circleId, required this.circleName});
+
+  final String circleId;
+  final String circleName;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Stack(
+        children: [
+          const StarryBackground(),
+          SafeArea(
+            child: FutureBuilder<List<CommunityPost>>(
+              future: CommunityDataRepository.loadCommunityTopics(circleId),
+              builder: (context, snapshot) {
+                final circlePosts = snapshot.data ?? [];
+                final loading = snapshot.connectionState == ConnectionState.waiting;
                 return ListView(
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
                   children: [
@@ -435,15 +658,15 @@ class CircleHomePage extends StatelessWidget {
                           icon: const Icon(Icons.arrow_back_rounded),
                         ),
                         const SizedBox(width: 6),
-                        Text('$circle 圈', style: Theme.of(context).textTheme.headlineLarge),
+                        Text('$circleName 圈', style: Theme.of(context).textTheme.headlineLarge),
                         const Spacer(),
                         TextButton(
                           onPressed: () {
                             Navigator.of(context).push(
                               MaterialPageRoute(
                                 builder: (_) => TopicEditorPage(
-                                  circles: [circle],
-                                  presetCircle: circle,
+                                  circles: [circleName],
+                                  presetCircle: circleName,
                                 ),
                               ),
                             );
@@ -453,9 +676,14 @@ class CircleHomePage extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    Text('这里是 $circle 圈的话题讨论区'),
+                    Text('这里是 $circleName 圈的话题讨论区'),
                     const SizedBox(height: 16),
-                    if (circlePosts.isEmpty)
+                    if (loading)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 24),
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    else if (circlePosts.isEmpty)
                       const EmptyStateCard()
                     else
                       Column(
@@ -635,8 +863,15 @@ class TopicDetailPage extends StatelessWidget {
                       children: [
                         TextButton(
                           onPressed: () {
+                            final cid = post.communityId ?? '';
+                            if (cid.isEmpty) return;
                             Navigator.of(context).push(
-                              MaterialPageRoute(builder: (_) => CircleHomePage(circle: post.circle)),
+                              MaterialPageRoute(
+                                builder: (_) => CircleHomePage(
+                                  circleId: cid,
+                                  circleName: post.circle,
+                                ),
+                              ),
                             );
                           },
                           child: const Text('进入圈子'),
