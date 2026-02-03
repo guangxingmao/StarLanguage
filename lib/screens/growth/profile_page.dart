@@ -3,8 +3,11 @@ import 'dart:convert';
 import 'package:characters/characters.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../data/achievement_data.dart';
+import '../../utils/achievement_badges.dart';
 import '../../data/arena_data.dart';
 import '../../data/demo_data.dart';
 import '../../data/growth_data.dart';
@@ -23,7 +26,7 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   late Future<void> _meFuture;
-  late Future<ArenaStats> _arenaFuture;
+  late Future<AchievementWallData> _achievementWallFuture;
   late Future<List<FeedItem>> _feedFuture;
   static const int _levelExpMax = 100;
 
@@ -35,7 +38,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   void _load() {
     _meFuture = ProfileStore.fetchMe();
-    _arenaFuture = ArenaStatsRepository.load();
+    _achievementWallFuture = AchievementRepository.loadWall();
     _feedFuture = SocialFeedRepository.load();
   }
 
@@ -73,7 +76,6 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    final data = DemoData.fallback();
     return Scaffold(
       body: Stack(
         children: [
@@ -173,12 +175,11 @@ class _ProfilePageState extends State<ProfilePage> {
                     const SizedBox(height: 16),
                     Text('成就墙', style: Theme.of(context).textTheme.titleLarge),
                     const SizedBox(height: 12),
-                    FutureBuilder<ArenaStats>(
-                      future: _arenaFuture,
+                    FutureBuilder<AchievementWallData>(
+                      future: _achievementWallFuture,
                       builder: (context, snap) {
-                        final stats = snap.data ?? ArenaStats.initial();
-                        final progress = _buildAchievementProgress(data, stats);
-                        if (progress.isEmpty) {
+                        final wall = snap.data;
+                        if (wall == null || wall.achievements.isEmpty) {
                           return Container(
                             padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
@@ -186,10 +187,84 @@ class _ProfilePageState extends State<ProfilePage> {
                               borderRadius: BorderRadius.circular(18),
                               border: Border.all(color: const Color(0xFFE9E0C9)),
                             ),
-                            child: const Text('完成一次擂台挑战即可解锁成就～'),
+                            child: const Text('暂无成就数据'),
                           );
                         }
-                        return AchievementWall(items: progress);
+                        return Column(
+                          children: wall.achievements.map((a) {
+                            final unlocked = wall.isUnlocked(a.id);
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(
+                                  color: unlocked
+                                      ? const Color(0xFFFFD166)
+                                      : const Color(0xFFE9E0C9),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  SizedBox(
+                                    width: 40,
+                                    height: 40,
+                                    child: SvgPicture.asset(
+                                      AchievementBadges.assetPath(a.iconKey),
+                                      width: 40,
+                                      height: 40,
+                                      colorFilter: unlocked
+                                          ? null
+                                          : ColorFilter.mode(
+                                              const Color(0xFFB0AFA6),
+                                              BlendMode.saturation,
+                                            ),
+                                    ),
+                                  ),
+                                  if (!unlocked)
+                                    Padding(
+                                      padding: const EdgeInsets.only(left: 4),
+                                      child: Icon(
+                                        Icons.lock_outline_rounded,
+                                        size: 18,
+                                        color: const Color(0xFFB0AFA6),
+                                      ),
+                                    ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          a.name,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFF2B2B2B),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          a.description,
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            color: Color(0xFF6F6B60),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (unlocked)
+                                    const Icon(
+                                      Icons.check_circle_rounded,
+                                      color: Color(0xFF2EC4B6),
+                                      size: 22,
+                                    ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        );
                       },
                     ),
                     const SizedBox(height: 16),

@@ -37,6 +37,8 @@ services:
       - ./backend/sql/003_growth_seed.sql:/docker-entrypoint-initdb.d/003_growth_seed.sql:ro
       - ./backend/sql/004_user_profile_ext.sql:/docker-entrypoint-initdb.d/004_user_profile_ext.sql:ro
       - ./backend/sql/005_arena_schema.sql:/docker-entrypoint-initdb.d/005_arena_schema.sql:ro
+      - ./backend/sql/006_achievements_schema.sql:/docker-entrypoint-initdb.d/006_achievements_schema.sql:ro
+      - ./backend/sql/007_achievements_seed.sql:/docker-entrypoint-initdb.d/007_achievements_seed.sql:ro
     ports:
       - "${POSTGRES_PORT:-5433}:5432"
     healthcheck:
