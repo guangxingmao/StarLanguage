@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../app_route_observer.dart';
 import '../../data/community_data.dart';
 import '../../data/community_page_data.dart';
 import '../../data/demo_data.dart';
@@ -13,9 +14,82 @@ import '../../widgets/reveal.dart';
 import '../../widgets/starry_background.dart';
 import '../learning/learning_page.dart';
 
-/// 社群 Tab 页（数据来自 [CommunityPageData]，可后端接口填充）
-class CommunityPage extends StatelessWidget {
-  const CommunityPage({super.key});
+/// 社群 Tab 页（数据来自 [CommunityPageData]）；切回本 tab 时会重新拉取已加入与今日热门
+class CommunityPage extends StatefulWidget {
+  const CommunityPage({super.key, this.selectedTabIndex = 0});
+
+  /// 当前底部选中的 tab 索引，用于在切回社群 tab 时刷新数据
+  final int selectedTabIndex;
+
+  static const int communityTabIndex = 1;
+
+  @override
+  State<CommunityPage> createState() => _CommunityPageState();
+}
+
+class _CommunityPageState extends State<CommunityPage> with RouteAware {
+  late Future<CommunityPageData> _dataFuture;
+  ModalRoute<void>? _subscribedRoute;
+
+  void _refresh() {
+    setState(() => _dataFuture = CommunityDataRepository.load());
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _dataFuture = CommunityDataRepository.load();
+  }
+
+  @override
+  void didUpdateWidget(CommunityPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedTabIndex != CommunityPage.communityTabIndex &&
+        widget.selectedTabIndex == CommunityPage.communityTabIndex) {
+      _refresh();
+    }
+    if (widget.selectedTabIndex == CommunityPage.communityTabIndex) {
+      _subscribeRoute();
+    } else {
+      _unsubscribeRoute();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (widget.selectedTabIndex == CommunityPage.communityTabIndex) {
+      _subscribeRoute();
+    }
+  }
+
+  void _subscribeRoute() {
+    if (_subscribedRoute != null) return;
+    final route = ModalRoute.of(context);
+    if (route is ModalRoute<void>) {
+      _subscribedRoute = route;
+      appRouteObserver.subscribe(this, route);
+    }
+  }
+
+  void _unsubscribeRoute() {
+    if (_subscribedRoute == null) return;
+    appRouteObserver.unsubscribe(this);
+    _subscribedRoute = null;
+  }
+
+  @override
+  void dispose() {
+    _unsubscribeRoute();
+    super.dispose();
+  }
+
+  @override
+  void didPopNext() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _refresh();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -24,7 +98,7 @@ class CommunityPage extends StatelessWidget {
         const StarryBackground(),
         SafeArea(
           child: FutureBuilder<CommunityPageData>(
-            future: CommunityDataRepository.load(),
+            future: _dataFuture,
             builder: (context, snapshot) {
               final pageData = snapshot.data ?? CommunityPageData.fallback();
               final joined = pageData.joinedCommunities;

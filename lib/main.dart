@@ -23,6 +23,7 @@ import 'screens/community/community_page.dart';
 import 'screens/growth/growth_page.dart';
 import 'screens/growth/profile_page.dart' show AchievementUnlockPopup, BadgeWall;
 import 'screens/learning/learning_page.dart';
+import 'app_route_observer.dart';
 import 'widgets/starry_background.dart';
 
 Future<void> main() async {
@@ -59,6 +60,7 @@ class StarKnowApp extends StatelessWidget {
 
     return MaterialApp(
       title: '星知',
+      navigatorObservers: [appRouteObserver],
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: scheme,
@@ -156,7 +158,7 @@ class _StarKnowShellState extends State<StarKnowShell> {
 
   List<Widget> get _pages => [
     GrowthPage(selectedTabIndex: _index),
-    CommunityPage(),
+    CommunityPage(selectedTabIndex: _index),
     AssistantPage(),
     ArenaPage(),
     LearningPage(),
