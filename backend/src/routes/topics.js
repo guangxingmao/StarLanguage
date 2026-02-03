@@ -1,3 +1,4 @@
+const { requireAuth } = require('../middleware/auth');
 const { pool } = require('../db');
 
 /** 根据 created_at 生成相对时间文案 */
@@ -96,9 +97,68 @@ function listByCommunity(app) {
   });
 }
 
+/** POST /topics — 发布话题（需登录） */
+function createTopic(app) {
+  app.post('/topics', requireAuth, async (req, res) => {
+    const { phone } = req.auth;
+    const { communityId, title, content, summary, imageUrl } = req.body || {};
+    const cid = (communityId != null && communityId !== '') ? String(communityId).trim() : null;
+    const titleStr = (title != null && title !== '') ? String(title).trim() : null;
+    const contentStr = content != null ? String(content).trim() : '';
+    const summaryStr = (summary != null && summary !== '') ? String(summary).trim() : null;
+    const imageUrlStr = (imageUrl != null && imageUrl !== '') ? String(imageUrl).trim() : null;
+
+    if (!cid) {
+      return res.status(400).json({ error: 'invalid_body', message: '需要 communityId' });
+    }
+    if (!titleStr) {
+      return res.status(400).json({ error: 'invalid_body', message: '需要标题' });
+    }
+
+    try {
+      const comm = await pool.query('SELECT 1 FROM communities WHERE id = $1', [cid]);
+      if (!comm.rows.length) {
+        return res.status(404).json({ error: 'not_found', message: '社群不存在' });
+      }
+      const userRow = await pool.query('SELECT name FROM users WHERE phone = $1', [phone]);
+      const authorName = userRow.rows[0]?.name ?? '用户';
+
+      const summaryFinal = summaryStr != null && summaryStr !== ''
+        ? summaryStr
+        : (contentStr.length > 500 ? contentStr.slice(0, 497) + '...' : contentStr);
+
+      const r = await pool.query(
+        `INSERT INTO topics (community_id, title, summary, content, author_phone, author_name, image_url, likes_count, comments_count, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, now())
+         RETURNING id, community_id, title, summary, content, author_phone, author_name, image_url, likes_count, comments_count, created_at`,
+        [cid, titleStr, summaryFinal, contentStr, phone, authorName, imageUrlStr]
+      );
+      const row = r.rows[0];
+      res.status(201).json({
+        id: String(row.id),
+        communityId: row.community_id,
+        circle: (await pool.query('SELECT name FROM communities WHERE id = $1', [cid])).rows[0]?.name ?? '',
+        title: row.title,
+        summary: row.summary ?? '',
+        content: row.content ?? '',
+        author: row.author_name ?? '',
+        timeLabel: '刚刚',
+        likes: row.likes_count ?? 0,
+        comments: row.comments_count ?? 0,
+        imageUrl: row.image_url ?? null,
+        createdAt: row.created_at,
+      });
+    } catch (err) {
+      console.error('[topics create]', err);
+      res.status(500).json({ error: 'server_error', message: '发布失败' });
+    }
+  });
+}
+
 function routes(app) {
   hotToday(app);
   listByCommunity(app);
+  createTopic(app);
 }
 
 module.exports = routes;

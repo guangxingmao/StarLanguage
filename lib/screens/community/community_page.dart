@@ -136,10 +136,12 @@ class _CommunityPageState extends State<CommunityPage> with RouteAware {
                   const SizedBox(height: 18),
                   CommunityComposer(
                     onCompose: () {
+                      final list = joined.isNotEmpty ? joined : [const Topic(id: 'other', name: '其他')];
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => TopicEditorPage(
-                            circles: circles.isNotEmpty ? circles : ['其他'],
+                            communities: list,
+                            presetCircleName: null,
                           ),
                         ),
                       );
@@ -704,11 +706,28 @@ class _JoinCommunityPageState extends State<JoinCommunityPage> {
 
 // ==================== 圈子 / 话题页 ====================
 
-class CircleHomePage extends StatelessWidget {
+class CircleHomePage extends StatefulWidget {
   const CircleHomePage({super.key, required this.circleId, required this.circleName});
 
   final String circleId;
   final String circleName;
+
+  @override
+  State<CircleHomePage> createState() => _CircleHomePageState();
+}
+
+class _CircleHomePageState extends State<CircleHomePage> {
+  late Future<List<CommunityPost>> _topicsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _topicsFuture = CommunityDataRepository.loadCommunityTopics(widget.circleId);
+  }
+
+  void _refreshTopics() {
+    setState(() => _topicsFuture = CommunityDataRepository.loadCommunityTopics(widget.circleId));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -718,7 +737,7 @@ class CircleHomePage extends StatelessWidget {
           const StarryBackground(),
           SafeArea(
             child: FutureBuilder<List<CommunityPost>>(
-              future: CommunityDataRepository.loadCommunityTopics(circleId),
+              future: _topicsFuture,
               builder: (context, snapshot) {
                 final circlePosts = snapshot.data ?? [];
                 final loading = snapshot.connectionState == ConnectionState.waiting;
@@ -732,25 +751,26 @@ class CircleHomePage extends StatelessWidget {
                           icon: const Icon(Icons.arrow_back_rounded),
                         ),
                         const SizedBox(width: 6),
-                        Text('$circleName 圈', style: Theme.of(context).textTheme.headlineLarge),
+                        Text('${widget.circleName} 圈', style: Theme.of(context).textTheme.headlineLarge),
                         const Spacer(),
                         TextButton(
-                          onPressed: () {
-                            Navigator.of(context).push(
+                          onPressed: () async {
+                            final result = await Navigator.of(context).push<bool>(
                               MaterialPageRoute(
                                 builder: (_) => TopicEditorPage(
-                                  circles: [circleName],
-                                  presetCircle: circleName,
+                                  communities: [Topic(id: widget.circleId, name: widget.circleName)],
+                                  presetCircleName: widget.circleName,
                                 ),
                               ),
                             );
+                            if (result == true && mounted) _refreshTopics();
                           },
                           child: const Text('发话题'),
                         ),
                       ],
                     ),
                     const SizedBox(height: 8),
-                    Text('这里是 $circleName 圈的话题讨论区'),
+                    Text('这里是 ${widget.circleName} 圈的话题讨论区'),
                     const SizedBox(height: 16),
                     if (loading)
                       const Padding(
@@ -964,10 +984,11 @@ class TopicDetailPage extends StatelessWidget {
 }
 
 class TopicEditorPage extends StatefulWidget {
-  const TopicEditorPage({super.key, required this.circles, this.presetCircle});
+  const TopicEditorPage({super.key, required this.communities, this.presetCircleName});
 
-  final List<String> circles;
-  final String? presetCircle;
+  /// 可选社群列表（含 id、name），用于选择发布到哪个圈子
+  final List<Topic> communities;
+  final String? presetCircleName;
 
   @override
   State<TopicEditorPage> createState() => _TopicEditorPageState();
@@ -976,14 +997,25 @@ class TopicEditorPage extends StatefulWidget {
 class _TopicEditorPageState extends State<TopicEditorPage> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _contentController = TextEditingController();
-  late String _circle;
+  late Topic _selectedTopic;
   Uint8List? _imageBytes;
   String? _imageMime;
+  bool _submitting = false;
 
   @override
   void initState() {
     super.initState();
-    _circle = widget.presetCircle ?? (widget.circles.isNotEmpty ? widget.circles.first : '其他');
+    if (widget.communities.isEmpty) {
+      _selectedTopic = const Topic(id: 'other', name: '其他');
+      return;
+    }
+    final preset = widget.presetCircleName;
+    _selectedTopic = preset != null
+        ? widget.communities.firstWhere(
+            (t) => t.name == preset,
+            orElse: () => widget.communities.first,
+          )
+        : widget.communities.first;
   }
 
   @override
@@ -993,18 +1025,38 @@ class _TopicEditorPageState extends State<TopicEditorPage> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     final title = _titleController.text.trim();
     final content = _contentController.text.trim();
-    if (title.isEmpty || content.isEmpty) return;
-    final base64Image = _imageBytes == null ? null : base64Encode(_imageBytes!);
-    CommunityStore.addPost(
+    if (title.isEmpty || content.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请填写标题和内容')),
+      );
+      return;
+    }
+    if (_submitting) return;
+    setState(() => _submitting = true);
+    final summary = content.length > 500 ? '${content.substring(0, 500)}…' : content;
+    final post = await CommunityDataRepository.createTopic(
+      communityId: _selectedTopic.id,
       title: title,
       content: content,
-      circle: _circle,
-      imageBase64: base64Image,
+      summary: summary,
     );
-    Navigator.of(context).pop();
+    if (!mounted) return;
+    setState(() => _submitting = false);
+    if (post == null) {
+      final err = CommunityDataRepository.createTopicLastError;
+      String msg = '发布失败，请重试';
+      if (err == 'no_token') msg = '请先登录后再发布';
+      else if (err == 'unauthorized') msg = '登录已过期，请重新登录';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('发布成功')),
+    );
+    Navigator.of(context).pop(true);
   }
 
   Future<void> _pickImage() async {
@@ -1037,7 +1089,10 @@ class _TopicEditorPageState extends State<TopicEditorPage> {
                     const SizedBox(width: 6),
                     Text('发布话题', style: Theme.of(context).textTheme.headlineLarge),
                     const Spacer(),
-                    TextButton(onPressed: _submit, child: const Text('发布')),
+                    TextButton(
+                      onPressed: _submitting ? null : _submit,
+                      child: _submitting ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('发布'),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -1086,12 +1141,12 @@ class _TopicEditorPageState extends State<TopicEditorPage> {
                 Wrap(
                   spacing: 10,
                   runSpacing: 10,
-                  children: widget.circles.map((circle) {
-                    final active = _circle == circle;
+                  children: widget.communities.map((topic) {
+                    final active = _selectedTopic.id == topic.id;
                     return ChoiceChip(
-                      label: Text(circle),
+                      label: Text(topic.name),
                       selected: active,
-                      onSelected: (_) => setState(() => _circle = circle),
+                      onSelected: (_) => setState(() => _selectedTopic = topic),
                     );
                   }).toList(),
                 ),

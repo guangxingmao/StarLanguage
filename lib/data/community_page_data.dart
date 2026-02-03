@@ -136,6 +136,53 @@ class CommunityDataRepository {
     }
   }
 
+  /// 发布话题（需登录）。成功返回 post，失败返回 null 且 [createTopicLastError] 为原因
+  static String? createTopicLastError;
+
+  /// 发布话题（需登录）
+  static Future<CommunityPost?> createTopic({
+    required String communityId,
+    required String title,
+    required String content,
+    String? summary,
+    String? imageUrl,
+  }) async {
+    createTopicLastError = null;
+    final token = ProfileStore.authToken;
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    if (token == null || token.isEmpty) {
+      createTopicLastError = 'no_token';
+      return null;
+    }
+    try {
+      final body = <String, dynamic>{
+        'communityId': communityId,
+        'title': title,
+        'content': content,
+      };
+      if (summary != null && summary.isNotEmpty) body['summary'] = summary;
+      if (imageUrl != null && imageUrl.isNotEmpty) body['imageUrl'] = imageUrl;
+      final res = await http.post(
+        Uri.parse('$baseUrl/topics'),
+        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
+      if (res.statusCode == 201) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>?;
+        return data != null ? CommunityPost.fromJson(data) : null;
+      }
+      if (res.statusCode == 401) {
+        createTopicLastError = 'unauthorized';
+        return null;
+      }
+      createTopicLastError = 'server_error';
+      return null;
+    } catch (_) {
+      createTopicLastError = 'server_error';
+      return null;
+    }
+  }
+
   /// 指定圈子下的所有话题
   static Future<List<CommunityPost>> loadCommunityTopics(String communityId) async {
     final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
