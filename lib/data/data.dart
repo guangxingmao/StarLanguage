@@ -2,7 +2,7 @@
 library;
 
 export 'profile.dart';
-export 'demo_data.dart';
+export 'demo_data.dart' hide Achievement;
 export 'community_data.dart';
 export 'ai_proxy.dart';
 export 'arena_data.dart';

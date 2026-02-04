@@ -108,6 +108,73 @@ docker compose exec db psql -U starknow -d starknow -c "SELECT 1;"
 
 ---
 
+## 数据库连接不上时排查
+
+按下面顺序检查，多数情况是 **db 容器没启动** 或 **端口/主机填错**。
+
+### 1. 确认 db 容器在运行
+
+在项目根目录执行：
+
+```bash
+docker compose ps
+```
+
+应看到两个容器：**app**（starknow-ai-proxy）和 **db**（starknow-db），状态均为 `Up`。  
+若只有 app、没有 db，说明数据库容器未启动，执行：
+
+```bash
+docker compose up -d
+```
+
+会同时启动 app 和 db。若 db 启动失败，看日志：
+
+```bash
+docker compose logs db
+```
+
+根据报错排查（常见：端口被占用、数据卷权限、init 脚本报错）。
+
+### 2. 本机连接参数（DBeaver / TablePlus / 命令行）
+
+从**本机**连 Docker 里的 PostgreSQL，必须用「宿主机端口」：
+
+| 项     | 值        | 说明 |
+|--------|-----------|------|
+| Host   | `localhost` 或 `127.0.0.1` | 不要填 `db`（`db` 是容器名，只在 Docker 网络内有效） |
+| Port   | **5433**  | 宿主机映射端口（与 `.env` 里 `POSTGRES_PORT` 一致，默认 5433） |
+| User   | `starknow` | 与 `.env` 里 `POSTGRES_USER` 一致 |
+| Password | `starknow` | 与 `.env` 里 `POSTGRES_PASSWORD` 一致 |
+| Database | `starknow` | 与 `.env` 里 `POSTGRES_DB` 一致 |
+
+**常见错误**：端口填成 `5432`。容器内部是 5432，但宿主机映射的是 5433，本机客户端必须连 **5433**。
+
+### 3. 用命令行快速验证
+
+在项目根目录执行：
+
+```bash
+docker compose exec db psql -U starknow -d starknow -c "SELECT 1;"
+```
+
+若输出 `?column?` 和 `1`，说明数据库正常，问题多半在客户端的主机/端口配置。
+
+### 4. 若本机已安装 PostgreSQL（占用 5432）
+
+项目已用 5433 映射，不会冲突。只要客户端连 **localhost:5433** 即可，不要连 5432。
+
+### 5. backend 或其它本地服务连库
+
+本地跑的 Node（如 `backend`）要连 Docker 里的库时，连接串用：
+
+```
+postgres://starknow:starknow@localhost:5433/starknow
+```
+
+可在项目根或 `backend` 目录的 `.env` 里设置 `DATABASE_URL=postgres://starknow:starknow@localhost:5433/starknow`，并确保 `backend/src/config.js` 会读取到该环境变量。
+
+---
+
 ## 一、目录与文件
 
 | 文件 | 说明 |

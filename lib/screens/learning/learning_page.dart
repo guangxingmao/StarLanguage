@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../data/demo_data.dart';
 import '../../data/learning_data.dart';
+import '../../data/demo_data.dart';
 import '../../widgets/starry_background.dart';
 import '../../widgets/reveal.dart';
 

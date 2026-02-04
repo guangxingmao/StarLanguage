@@ -89,9 +89,18 @@ function routes(app, getClient) {
       });
     } catch (err) {
       console.error('[chat]', err);
+      const code = err?.code;
+      const msg = err?.message || 'Unknown error';
+      // 服务未开通：腾讯云控制台未开通混元大模型
+      if (code === 'FailedOperation.ServiceNotActivated') {
+        return res.status(503).json({
+          error: 'service_not_activated',
+          message: '腾讯云混元（Hunyuan）服务未开通。请在腾讯云控制台开通「混元」大模型服务后再试。',
+        });
+      }
       res.status(500).json({
         error: 'proxy_error',
-        message: err?.message || 'Unknown error',
+        message: msg,
       });
     }
   });
