@@ -194,7 +194,9 @@ class _CommunityPageState extends State<CommunityPage> with RouteAware {
                         posts: hotPosts,
                         onTap: (post) {
                           Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => TopicDetailPage(post: post)),
+                            MaterialPageRoute(
+                              builder: (_) => TopicDetailPage(post: post, showEnterCircle: true),
+                            ),
                           );
                         },
                         showLikeAndComment: false,
@@ -789,20 +791,46 @@ class CircleHomePage extends StatefulWidget {
 
 class _CircleHomePageState extends State<CircleHomePage> {
   late Future<List<CommunityPost>> _topicsFuture;
+  late Future<List<ReceivedComment>> _receivedCommentsFuture;
+  /// true = 只显示我发的话题 + 别人给我的评论
+  bool _showMineOnly = false;
 
   @override
   void initState() {
     super.initState();
     _topicsFuture = CommunityDataRepository.loadCommunityTopics(widget.circleId);
+    _receivedCommentsFuture = CommunityDataRepository.loadReceivedComments(widget.circleId);
   }
 
   void _refreshTopics() {
-    setState(() => _topicsFuture = CommunityDataRepository.loadCommunityTopics(widget.circleId));
+    setState(() {
+      _topicsFuture = CommunityDataRepository.loadCommunityTopics(widget.circleId);
+      _receivedCommentsFuture = CommunityDataRepository.loadReceivedComments(widget.circleId);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () async {
+          final result = await Navigator.of(context).push<bool>(
+            MaterialPageRoute(
+              builder: (_) => TopicEditorPage(
+                communities: [Topic(id: widget.circleId, name: widget.circleName)],
+                presetCircleName: widget.circleName,
+              ),
+            ),
+          );
+          if (result == true && mounted) _refreshTopics();
+        },
+        icon: const Icon(Icons.edit_rounded),
+        label: const Text('发话题'),
+        backgroundColor: theme.colorScheme.primaryContainer,
+        foregroundColor: theme.colorScheme.onPrimaryContainer,
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
       body: Stack(
         children: [
           const StarryBackground(),
@@ -810,62 +838,140 @@ class _CircleHomePageState extends State<CircleHomePage> {
             child: FutureBuilder<List<CommunityPost>>(
               future: _topicsFuture,
               builder: (context, snapshot) {
-                final circlePosts = snapshot.data ?? [];
+                final allPosts = snapshot.data ?? [];
                 final loading = snapshot.connectionState == ConnectionState.waiting;
-                return ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-                  children: [
-                    Row(
-                      children: [
-                        IconButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          icon: const Icon(Icons.arrow_back_rounded),
-                        ),
-                        const SizedBox(width: 6),
-                        Text('${widget.circleName} 圈', style: Theme.of(context).textTheme.headlineLarge),
-                        const Spacer(),
-                        TextButton(
-                          onPressed: () async {
-                            final result = await Navigator.of(context).push<bool>(
-                              MaterialPageRoute(
-                                builder: (_) => TopicEditorPage(
-                                  communities: [Topic(id: widget.circleId, name: widget.circleName)],
-                                  presetCircleName: widget.circleName,
+                final circlePosts = _showMineOnly
+                    ? allPosts.where((p) => p.isMine).toList()
+                    : allPosts;
+                return CustomScrollView(
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                IconButton(
+                                  onPressed: () => Navigator.of(context).pop(),
+                                  icon: const Icon(Icons.arrow_back_rounded),
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.6),
+                                  ),
                                 ),
-                              ),
-                            );
-                            if (result == true && mounted) _refreshTopics();
-                          },
-                          child: const Text('发话题'),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '${widget.circleName} 圈',
+                                        style: theme.textTheme.headlineSmall?.copyWith(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      Text(
+                                        '话题讨论区',
+                                        style: theme.textTheme.bodySmall?.copyWith(
+                                          color: theme.colorScheme.outline,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Material(
+                                  color: _showMineOnly
+                                      ? theme.colorScheme.primaryContainer
+                                      : theme.colorScheme.surfaceContainerHighest.withOpacity(0.7),
+                                  borderRadius: BorderRadius.circular(20),
+                                  child: InkWell(
+                                    onTap: () => setState(() => _showMineOnly = !_showMineOnly),
+                                    borderRadius: BorderRadius.circular(20),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            _showMineOnly ? Icons.person_rounded : Icons.person_outline_rounded,
+                                            size: 18,
+                                            color: _showMineOnly
+                                                ? theme.colorScheme.onPrimaryContainer
+                                                : theme.colorScheme.outline,
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            '我的',
+                                            style: theme.textTheme.labelLarge?.copyWith(
+                                              color: _showMineOnly
+                                                  ? theme.colorScheme.onPrimaryContainer
+                                                  : theme.colorScheme.outline,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
-                    const SizedBox(height: 8),
-                    Text('这里是 ${widget.circleName} 圈的话题讨论区'),
-                    const SizedBox(height: 16),
-                    if (loading)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 24),
+                    if (loading && !_showMineOnly)
+                      const SliverFillRemaining(
                         child: Center(child: CircularProgressIndicator()),
                       )
-                    else if (circlePosts.isEmpty)
-                      const EmptyStateCard()
+                    else if (!_showMineOnly && circlePosts.isEmpty)
+                      const SliverFillRemaining(child: EmptyStateCard())
+                    else if (_showMineOnly && circlePosts.isEmpty && !loading)
+                      SliverFillRemaining(
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.article_outlined, size: 56, color: theme.colorScheme.outline),
+                              const SizedBox(height: 12),
+                              Text(
+                                '你还没在本圈发过话题',
+                                style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.outline),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '点击左下角「发话题」发布第一条',
+                                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    else if (_showMineOnly)
+                      ..._buildMineSlivers(theme, circlePosts)
                     else
-                      Column(
-                        children: circlePosts
-                            .map(
-                              (post) => Padding(
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                        sliver: SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) {
+                              final post = circlePosts[index];
+                              return Padding(
                                 padding: const EdgeInsets.only(bottom: 12),
                                 child: TopicPostCard(
                                   data: post,
                                   onTap: () => Navigator.of(context).push(
-                                    MaterialPageRoute(builder: (_) => TopicDetailPage(post: post)),
+                                    MaterialPageRoute(
+                                      builder: (_) => TopicDetailPage(post: post, showEnterCircle: false),
+                                    ),
                                   ),
                                   onLikePressed: _refreshTopics,
                                 ),
-                              ),
-                            )
-                            .toList(),
+                              );
+                            },
+                            childCount: circlePosts.length,
+                          ),
+                        ),
                       ),
                   ],
                 );
@@ -876,12 +982,170 @@ class _CircleHomePageState extends State<CircleHomePage> {
       ),
     );
   }
+
+  /// 「我的」下的两个区块：别人给我的评论 + 我发的话题
+  List<Widget> _buildMineSlivers(ThemeData theme, List<CommunityPost> myPosts) {
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: Text(
+            '别人给我的评论',
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: theme.colorScheme.outline,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+      FutureBuilder<List<ReceivedComment>>(
+        future: _receivedCommentsFuture,
+        builder: (context, cs) {
+          if (cs.connectionState == ConnectionState.waiting) {
+            return const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))),
+              ),
+            );
+          }
+          final comments = cs.data ?? [];
+          if (comments.isEmpty) {
+            return SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                child: Text(
+                  '暂无',
+                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
+                ),
+              ),
+            );
+          }
+          return SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final c = comments[index];
+                  return _buildReceivedCommentTile(theme, c);
+                },
+                childCount: comments.length,
+              ),
+            ),
+          );
+        },
+      ),
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Text(
+            '我发的话题',
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: theme.colorScheme.outline,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+      SliverPadding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+        sliver: SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (context, index) {
+              final post = myPosts[index];
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                                child: TopicPostCard(
+                                  data: post,
+                                  onTap: () => Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => TopicDetailPage(post: post, showEnterCircle: false),
+                                    ),
+                                  ),
+                                  onLikePressed: _refreshTopics,
+                                ),
+                              );
+                            },
+                            childCount: myPosts.length,
+                          ),
+                        ),
+                      ),
+    ];
+  }
+
+  Widget _buildReceivedCommentTile(ThemeData theme, ReceivedComment c) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.6),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: () {
+            final post = CommunityPost(
+              id: c.topicId.toString(),
+              title: c.topicTitle,
+              summary: '',
+              content: '',
+              circle: widget.circleName,
+              author: '',
+              timeLabel: '',
+              likes: 0,
+              comments: 0,
+              accent: CommunityStore.accentForCircle(widget.circleName),
+              communityId: widget.circleId,
+            );
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => TopicDetailPage(post: post, showEnterCircle: false),
+              ),
+            );
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      c.author,
+                      style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      c.timeLabel,
+                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  c.content,
+                  style: theme.textTheme.bodyMedium,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '在《${c.topicTitle.length > 12 ? "${c.topicTitle.substring(0, 12)}…" : c.topicTitle}》下',
+                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class TopicDetailPage extends StatefulWidget {
-  const TopicDetailPage({super.key, required this.post});
+  const TopicDetailPage({super.key, required this.post, this.showEnterCircle = true});
 
   final CommunityPost post;
+  /// 为 true 时右上角显示「进入圈子」（从今日热门进入时显示；从圈子内进入时不显示）
+  final bool showEnterCircle;
 
   @override
   State<TopicDetailPage> createState() => _TopicDetailPageState();
@@ -1351,7 +1615,7 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                           const SizedBox(width: 6),
                           Text('话题详情', style: Theme.of(context).textTheme.headlineLarge),
                           const Spacer(),
-                          if (_post.communityId != null && _post.communityId!.isNotEmpty)
+                          if (widget.showEnterCircle && _post.communityId != null && _post.communityId!.isNotEmpty)
                             Padding(
                               padding: const EdgeInsets.only(right: 8),
                               child: FilledButton.icon(

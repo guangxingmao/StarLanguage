@@ -408,6 +408,67 @@ class CommunityDataRepository {
       return false;
     }
   }
+
+  /// 本圈内「别人给我的评论」（我发的话题下、别人发的评论，需登录）
+  static Future<List<ReceivedComment>> loadReceivedComments(String communityId) async {
+    final token = ProfileStore.authToken;
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    if (token == null || token.isEmpty) return [];
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/communities/$communityId/received-comments'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (res.statusCode != 200) return [];
+      final data = jsonDecode(res.body);
+      if (data is! List) return [];
+      return (data as List)
+          .map((e) => ReceivedComment.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+}
+
+/// 别人在我的话题下的评论（用于「我的」- 别人给我的评论）
+class ReceivedComment {
+  const ReceivedComment({
+    required this.commentId,
+    required this.topicId,
+    required this.topicTitle,
+    required this.author,
+    required this.content,
+    required this.timeLabel,
+    this.replyToAuthor,
+  });
+
+  final int commentId;
+  final int topicId;
+  final String topicTitle;
+  final String author;
+  final String content;
+  final String timeLabel;
+  final String? replyToAuthor;
+
+  factory ReceivedComment.fromJson(Map<String, dynamic> json) {
+    int toInt(dynamic v) {
+      if (v == null) return 0;
+      if (v is int) return v;
+      if (v is num) return v.toInt();
+      if (v is String) return int.tryParse(v) ?? 0;
+      return 0;
+    }
+    return ReceivedComment(
+      commentId: toInt(json['commentId']),
+      topicId: toInt(json['topicId']),
+      topicTitle: json['topicTitle'] as String? ?? '',
+      author: json['author'] as String? ?? '',
+      content: json['content'] as String? ?? '',
+      timeLabel: json['timeLabel'] as String? ?? '',
+      replyToAuthor: json['replyToAuthor'] as String?,
+    );
+  }
 }
 
 /// 话题详情接口返回：帖子 + 评论列表
