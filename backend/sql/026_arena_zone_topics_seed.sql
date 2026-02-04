@@ -1,0 +1,61 @@
+-- 为分区榜「总榜」补数据：为所有用户 topic_best 合并题库中全部主题，各分区总榜都有数据
+-- 执行顺序：022、023、025 之后执行。依赖：user_arena_stats 已存在
+-- 分区榜接口 GET /arena/leaderboard/zone?topic=xxx 按 topic_best->topic 排序，无该 key 则不会上榜
+
+-- 为所有用户合并「人工智能」「编程」「其他」及 020/021 中其余主题（随机 50～220 分）
+UPDATE user_arena_stats
+SET topic_best = COALESCE(NULLIF(topic_best::text, 'null')::jsonb, '{}'::jsonb)
+  || jsonb_build_object(
+       '历史', (60 + (random() * 160))::int,
+       '计算机', (55 + (random() * 165))::int,
+       '篮球', (58 + (random() * 162))::int,
+       '动物', (62 + (random() * 158))::int,
+       '科学', (65 + (random() * 155))::int,
+       '自然', (52 + (random() * 168))::int,
+       '地理', (54 + (random() * 166))::int,
+       '综合', (50 + (random() * 170))::int,
+       '数学', (64 + (random() * 156))::int,
+       '美术', (56 + (random() * 164))::int,
+       '音乐', (57 + (random() * 163))::int,
+       '阅读', (63 + (random() * 157))::int,
+       '太空', (59 + (random() * 161))::int,
+       '机器人', (61 + (random() * 159))::int,
+       '游戏', (53 + (random() * 167))::int,
+       '美食', (55 + (random() * 165))::int,
+       '旅行', (51 + (random() * 169))::int,
+       '摄影', (58 + (random() * 162))::int,
+       '电影', (66 + (random() * 154))::int,
+       '动漫', (60 + (random() * 160))::int,
+       '益智', (62 + (random() * 158))::int,
+       '英语', (59 + (random() * 161))::int,
+       '语文', (67 + (random() * 153))::int,
+       '物理', (61 + (random() * 159))::int,
+       '化学', (57 + (random() * 163))::int,
+       '生物', (63 + (random() * 157))::int,
+       '足球', (56 + (random() * 164))::int,
+       '游泳', (58 + (random() * 162))::int,
+       '跑步', (60 + (random() * 160))::int,
+       '绘画', (55 + (random() * 165))::int,
+       '舞蹈', (54 + (random() * 166))::int,
+       '植物', (52 + (random() * 168))::int,
+       '天文', (64 + (random() * 156))::int,
+       '海洋', (59 + (random() * 161))::int,
+       '恐龙', (61 + (random() * 159))::int,
+       '发明', (57 + (random() * 163))::int,
+       '故事', (65 + (random() * 155))::int,
+       '诗歌', (63 + (random() * 157))::int,
+       '手工', (58 + (random() * 162))::int,
+       '魔术', (53 + (random() * 167))::int,
+       '棋类', (62 + (random() * 158))::int,
+       '宠物', (60 + (random() * 160))::int,
+       '环保', (56 + (random() * 164))::int,
+       '健康', (64 + (random() * 156))::int,
+       '考古', (59 + (random() * 161))::int,
+       '民俗', (61 + (random() * 159))::int,
+       '羽毛球', (57 + (random() * 163))::int,
+       '瑜伽', (55 + (random() * 165))::int,
+       '编程', (66 + (random() * 154))::int,
+       '人工智能', (68 + (random() * 152))::int,
+       '其他', (50 + (random() * 170))::int
+     )
+WHERE true;
