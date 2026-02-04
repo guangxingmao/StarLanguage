@@ -1,5 +1,6 @@
 const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { pool } = require('../db');
+const { evaluateArenaAchievements } = require('../services/arena_achievements');
 
 function routes(app) {
   // 题库主题与子主题（供前端筛选器、分区榜使用）
@@ -199,10 +200,87 @@ function routes(app) {
         [phone, maxS, finalScore, accuracy, topicBestKey ? JSON.stringify({ [topicBestKey]: finalScore }) : '{}', topicBestKey]
       );
       const row = r.rows[0];
+      const sessionPayload = {
+        topic: t,
+        subtopic: st,
+        totalQuestions: total,
+        correctCount: correct,
+        score: finalScore,
+        maxStreak: maxS,
+      };
+
+      // 查询更新后的统计、累计答对数、各分区挑战次数、已解锁成就
+      const [statsRes, unlockedRes, sumRes, topicCountRes] = await Promise.all([
+        pool.query(
+          'SELECT matches, max_streak, total_score, best_accuracy, topic_best FROM user_arena_stats WHERE phone = $1',
+          [phone]
+        ),
+        pool.query(
+          'SELECT achievement_id FROM user_achievements WHERE phone = $1',
+          [phone]
+        ),
+        pool.query(
+          'SELECT COALESCE(SUM(correct_count), 0) AS total_correct FROM arena_challenge_sessions WHERE phone = $1',
+          [phone]
+        ),
+        pool.query(
+          'SELECT topic, COUNT(*) AS cnt FROM arena_challenge_sessions WHERE phone = $1 GROUP BY topic',
+          [phone]
+        ),
+      ]);
+
+      const statsRow = statsRes.rows[0];
+      const stats = statsRow ? {
+        matches: statsRow.matches ?? 0,
+        max_streak: statsRow.max_streak ?? 0,
+        total_score: statsRow.total_score ?? 0,
+        best_accuracy: statsRow.best_accuracy ?? 0,
+        topic_best: statsRow.topic_best && typeof statsRow.topic_best === 'object' ? statsRow.topic_best : {},
+      } : {};
+      const unlockedIds = new Set((unlockedRes.rows || []).map((r) => r.achievement_id));
+      const totalCorrect = Number(sumRes.rows[0]?.total_correct) || 0;
+      const topicSessionCounts = {};
+      for (const r of topicCountRes.rows || []) {
+        topicSessionCounts[r.topic || '全部'] = Number(r.cnt) || 0;
+      }
+
+      const satisfiedIds = evaluateArenaAchievements({
+        stats,
+        session: sessionPayload,
+        totalCorrect,
+        topicSessionCounts,
+      });
+      const newIds = satisfiedIds.filter((id) => !unlockedIds.has(id));
+
+      const nowTs = Date.now();
+      for (const achievementId of newIds) {
+        await pool.query(
+          `INSERT INTO user_achievements (phone, achievement_id, unlocked_at)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (phone, achievement_id) DO NOTHING`,
+          [phone, achievementId, nowTs]
+        );
+      }
+
+      let newlyUnlocked = [];
+      if (newIds.length > 0) {
+        const achRes = await pool.query(
+          'SELECT id, name, description, icon_key FROM achievements WHERE id = ANY($1)',
+          [newIds]
+        );
+        newlyUnlocked = (achRes.rows || []).map((row) => ({
+          id: row.id,
+          name: row.name ?? '',
+          description: row.description ?? '',
+          iconKey: row.icon_key ?? 'star',
+        }));
+      }
+
       res.json({
         id: row.id,
         createdAt: row.created_at,
         message: '提交成功',
+        newlyUnlocked,
       });
     } catch (err) {
       console.error('[arena challenge submit]', err);

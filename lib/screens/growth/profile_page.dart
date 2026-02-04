@@ -801,6 +801,9 @@ class AchievementUnlockPopup extends StatelessWidget {
 
   final List<String> names;
 
+  /// 成就列表最大高度，避免小屏或成就过多时溢出
+  static const double _maxListHeight = 280;
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -815,15 +818,25 @@ class AchievementUnlockPopup extends StatelessWidget {
         children: [
           const Text('新成就解锁', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
           const SizedBox(height: 12),
-          ...names.map(
-            (name) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  const Icon(Icons.emoji_events_rounded, color: Color(0xFFFF9F1C)),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text(name)),
-                ],
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: _maxListHeight),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: names.map(
+                  (name) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.emoji_events_rounded, color: Color(0xFFFF9F1C), size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(name)),
+                      ],
+                    ),
+                  ),
+                ).toList(),
               ),
             ),
           ),

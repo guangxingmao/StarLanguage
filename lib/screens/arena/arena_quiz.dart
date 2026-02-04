@@ -740,6 +740,17 @@ class _QuizPageState extends State<QuizPage> {
     });
   }
 
+  /// 从挑战提交接口返回中解析本次新解锁成就名称列表
+  static List<String> _parseNewlyUnlockedNames(Map<String, dynamic>? res) {
+    if (res == null) return [];
+    final list = res['newlyUnlocked'];
+    if (list is! List) return [];
+    return list
+        .map((e) => e is Map ? (e['name'] as String? ?? '').trim() : '')
+        .where((n) => n.isNotEmpty)
+        .toList();
+  }
+
   void _answer(String option) {
     if (_answered) return;
     final q = _questions[_index];
@@ -785,7 +796,7 @@ class _QuizPageState extends State<QuizPage> {
                   ? 10
                   : 0;
       final finalScore = _score + _accuracyBonus;
-      // 仅在做完所有题目后提交到后端并记录得分
+      // 仅在做完所有题目后提交到后端并记录得分；成就由接口根据本次+历史匹配后返回
       final res = await ArenaChallengeRepository.submitChallenge(
         topic: widget.topic,
         subtopic: widget.subtopic,
@@ -795,6 +806,7 @@ class _QuizPageState extends State<QuizPage> {
         maxStreak: _maxStreak,
         answers: _answerRecords,
       );
+      final newlyUnlockedNames = _parseNewlyUnlockedNames(res);
       if (mounted && res != null) {
         ArenaStatsStore.submit(
           score: finalScore,
@@ -823,6 +835,7 @@ class _QuizPageState extends State<QuizPage> {
             timeUsed: totalSeconds,
             maxStreak: _maxStreak,
             accuracyBonus: _accuracyBonus,
+            newlyUnlockedNames: newlyUnlockedNames,
           ),
         ),
       );
@@ -965,6 +978,7 @@ class QuizResultPage extends StatefulWidget {
     required this.timeUsed,
     required this.maxStreak,
     required this.accuracyBonus,
+    this.newlyUnlockedNames,
   });
 
   final int score;
@@ -973,6 +987,8 @@ class QuizResultPage extends StatefulWidget {
   final int timeUsed;
   final int maxStreak;
   final int accuracyBonus;
+  /// 接口返回的本轮新解锁成就名称列表；为 null 时使用本地 ArenaStatsStore.consumeNewBadges()
+  final List<String>? newlyUnlockedNames;
 
   @override
   State<QuizResultPage> createState() => _QuizResultPageState();
@@ -1006,12 +1022,14 @@ class _QuizResultPageState extends State<QuizResultPage> with SingleTickerProvid
     });
     _stagger.forward();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final newlyUnlocked = ArenaStatsStore.consumeNewBadges();
-      if (newlyUnlocked.isEmpty) return;
+      final names = widget.newlyUnlockedNames != null
+          ? List<String>.from(widget.newlyUnlockedNames!)
+          : ArenaStatsStore.consumeNewBadges();
+      if (names.isEmpty) return;
       showModalBottomSheet<void>(
         context: context,
         backgroundColor: Colors.transparent,
-        builder: (_) => AchievementUnlockPopup(names: newlyUnlocked),
+        builder: (_) => AchievementUnlockPopup(names: names),
       );
     });
   }
