@@ -32,7 +32,9 @@ class _CommunityPageState extends State<CommunityPage> with RouteAware {
   ModalRoute<void>? _subscribedRoute;
 
   void _refresh() {
-    setState(() => _dataFuture = CommunityDataRepository.load());
+    setState(() {
+      _dataFuture = CommunityDataRepository.load();
+    });
   }
 
   @override
@@ -872,8 +874,10 @@ class _CircleHomePageState extends State<CircleHomePage> {
   late Future<List<CommunityPost>> _topicsFuture;
   late Future<List<ReceivedComment>> _receivedCommentsFuture;
   late Future<List<ReceivedComment>> _myCommentsFuture;
-  /// true = 只显示：别人给我的评论、我对别人的评论、我发的话题
+  /// true = 只显示「我的」内容（Tab 切换）
   bool _showMineOnly = false;
+  /// 0=我的话题 1=我的评论 2=用户对我的评论
+  int _mineTabIndex = 0;
 
   @override
   void initState() {
@@ -1008,27 +1012,6 @@ class _CircleHomePageState extends State<CircleHomePage> {
                       )
                     else if (!_showMineOnly && circlePosts.isEmpty)
                       const SliverFillRemaining(child: EmptyStateCard())
-                    else if (_showMineOnly && circlePosts.isEmpty && !loading)
-                      SliverFillRemaining(
-                        child: Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.article_outlined, size: 56, color: theme.colorScheme.outline),
-                              const SizedBox(height: 12),
-                              Text(
-                                '你还没在本圈发过话题',
-                                style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.outline),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '点击左下角「发话题」发布第一条',
-                                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
                     else if (_showMineOnly)
                       ..._buildMineSlivers(theme, circlePosts)
                     else
@@ -1066,22 +1049,103 @@ class _CircleHomePageState extends State<CircleHomePage> {
     );
   }
 
-  /// 「我的」下三块：别人给我的评论、我对别人的评论、我发的话题
+  /// 「我的」下：Tab 切换（话题 / 我的评论 / 收到的评论），只显示当前一类
   List<Widget> _buildMineSlivers(ThemeData theme, List<CommunityPost> myPosts) {
+    const tabs = [
+      (Icons.article_outlined, '话题'),
+      (Icons.chat_bubble_outline_rounded, '我的评论'),
+      (Icons.inbox_rounded, '收到的'),
+    ];
     return [
-      _sectionHeader(theme, Icons.inbox_rounded, '别人给我的评论'),
-      FutureBuilder<List<ReceivedComment>>(
-        future: _receivedCommentsFuture,
-        builder: (context, cs) => _commentListSliver(theme, cs, _buildReceivedCommentTile),
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+          child: Row(
+            children: [
+              for (int i = 0; i < tabs.length; i++) ...[
+                if (i > 0) const SizedBox(width: 10),
+                Expanded(
+                  child: Material(
+                    color: _mineTabIndex == i
+                        ? theme.colorScheme.primaryContainer
+                        : theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(24),
+                    child: InkWell(
+                      onTap: () => setState(() => _mineTabIndex = i),
+                      borderRadius: BorderRadius.circular(24),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              tabs[i].$1,
+                              size: 18,
+                              color: _mineTabIndex == i
+                                  ? theme.colorScheme.onPrimaryContainer
+                                  : theme.colorScheme.outline,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              tabs[i].$2,
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                fontWeight: _mineTabIndex == i ? FontWeight.w600 : FontWeight.w500,
+                                color: _mineTabIndex == i
+                                    ? theme.colorScheme.onPrimaryContainer
+                                    : theme.colorScheme.outline,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
-      _sectionHeader(theme, Icons.chat_bubble_outline_rounded, '我对别人的评论'),
-      FutureBuilder<List<ReceivedComment>>(
-        future: _myCommentsFuture,
-        builder: (context, cs) => _commentListSliver(theme, cs, (t, c) => _buildMyCommentTile(t, c)),
-      ),
-      _sectionHeader(theme, Icons.article_outlined, '我发的话题'),
+      if (_mineTabIndex == 0) ..._buildMyTopicsSlivers(theme, myPosts),
+      if (_mineTabIndex == 1) ..._buildMyCommentsSlivers(theme),
+      if (_mineTabIndex == 2) ..._buildReceivedCommentsSlivers(theme),
+      SliverToBoxAdapter(child: const SizedBox(height: 80)),
+    ];
+  }
+
+  List<Widget> _buildMyTopicsSlivers(ThemeData theme, List<CommunityPost> myPosts) {
+    if (myPosts.isEmpty) {
+      return [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.article_outlined, size: 48, color: theme.colorScheme.outline),
+                  const SizedBox(height: 12),
+                  Text(
+                    '还没在本圈发过话题',
+                    style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.outline),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '点击左下角「发话题」发布第一条',
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ];
+    }
+    return [
       SliverPadding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         sliver: SliverList(
           delegate: SliverChildBuilderDelegate(
             (context, index) {
@@ -1107,32 +1171,46 @@ class _CircleHomePageState extends State<CircleHomePage> {
     ];
   }
 
-  Widget _sectionHeader(ThemeData theme, IconData icon, String title) {
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
-        child: Row(
-          children: [
-            Icon(icon, size: 20, color: theme.colorScheme.primary),
-            const SizedBox(width: 8),
-            Text(
-              title,
-              style: theme.textTheme.titleSmall?.copyWith(
-                color: theme.colorScheme.onSurface,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
+  List<Widget> _buildMyCommentsSlivers(ThemeData theme) {
+    return [
+      FutureBuilder<List<ReceivedComment>>(
+        future: _myCommentsFuture,
+        builder: (context, cs) => _commentListSliver(
+          theme,
+          cs,
+          (t, c) => _buildMyCommentTile(t, c),
+          emptyStateIcon: Icons.chat_bubble_outline_rounded,
+          emptyStateTitle: '还没有评论过',
+          emptyStateSubtitle: '在话题下留言会显示在这里',
         ),
       ),
-    );
+    ];
+  }
+
+  List<Widget> _buildReceivedCommentsSlivers(ThemeData theme) {
+    return [
+      FutureBuilder<List<ReceivedComment>>(
+        future: _receivedCommentsFuture,
+        builder: (context, cs) => _commentListSliver(
+          theme,
+          cs,
+          _buildReceivedCommentTile,
+          emptyStateIcon: Icons.inbox_rounded,
+          emptyStateTitle: '还没有收到评论',
+          emptyStateSubtitle: '别人在你话题下的评论会显示在这里',
+        ),
+      ),
+    ];
   }
 
   Widget _commentListSliver(
     ThemeData theme,
     AsyncSnapshot<List<ReceivedComment>> snapshot,
-    Widget Function(ThemeData, ReceivedComment) tileBuilder,
-  ) {
+    Widget Function(ThemeData, ReceivedComment) tileBuilder, {
+    IconData? emptyStateIcon,
+    String? emptyStateTitle,
+    String? emptyStateSubtitle,
+  }) {
     if (snapshot.connectionState == ConnectionState.waiting) {
       return const SliverToBoxAdapter(
         child: Padding(
@@ -1143,6 +1221,36 @@ class _CircleHomePageState extends State<CircleHomePage> {
     }
     final list = snapshot.data ?? [];
     if (list.isEmpty) {
+      if (emptyStateIcon != null && emptyStateTitle != null) {
+        return SliverFillRemaining(
+          hasScrollBody: false,
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(emptyStateIcon, size: 48, color: theme.colorScheme.outline),
+                  const SizedBox(height: 12),
+                  Text(
+                    emptyStateTitle,
+                    style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.outline),
+                    textAlign: TextAlign.center,
+                  ),
+                  if (emptyStateSubtitle != null && emptyStateSubtitle.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      emptyStateSubtitle,
+                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        );
+      }
       return SliverToBoxAdapter(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
@@ -1168,7 +1276,7 @@ class _CircleHomePageState extends State<CircleHomePage> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Material(
-        color: theme.colorScheme.primaryContainer.withOpacity(0.4),
+        color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: () => _openTopicFromComment(c),
@@ -1180,13 +1288,13 @@ class _CircleHomePageState extends State<CircleHomePage> {
               children: [
                 Row(
                   children: [
-                    Icon(Icons.person_rounded, size: 16, color: theme.colorScheme.primary),
+                    Icon(Icons.person_rounded, size: 16, color: theme.colorScheme.onSurfaceVariant),
                     const SizedBox(width: 6),
                     Text(
                       '我',
                       style: theme.textTheme.labelLarge?.copyWith(
                         fontWeight: FontWeight.w600,
-                        color: theme.colorScheme.primary,
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -1206,7 +1314,7 @@ class _CircleHomePageState extends State<CircleHomePage> {
                 const SizedBox(height: 4),
                 Text(
                   '在《${c.topicTitle.length > 14 ? "${c.topicTitle.substring(0, 14)}…" : c.topicTitle}》下',
-                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary),
+                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 ),
               ],
             ),
@@ -1741,6 +1849,7 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
       body: Stack(
         children: [
@@ -1921,59 +2030,110 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: _comments.map((comment) => _buildCommentTile(comment)).toList(),
                         ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
                       if (_replyingTo != null)
                         Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.only(bottom: 10),
                           child: Row(
                             children: [
-                              Text('回复 ${_replyingTo!.author}', style: TextStyle(fontSize: 12, color: _post.accent)),
+                              Material(
+                                color: theme.colorScheme.primaryContainer.withOpacity(0.8),
+                                borderRadius: BorderRadius.circular(20),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.reply_rounded, size: 16, color: theme.colorScheme.onPrimaryContainer),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        '回复 ${_replyingTo!.author}',
+                                        style: theme.textTheme.labelMedium?.copyWith(
+                                          color: theme.colorScheme.onPrimaryContainer,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
                               const SizedBox(width: 8),
                               TextButton(
                                 onPressed: () => setState(() => _replyingTo = null),
-                                child: const Text('取消'),
+                                child: Text('取消', style: TextStyle(color: theme.colorScheme.outline)),
                               ),
                             ],
                           ),
                         ),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFFE9E0C9)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(_replyingTo != null ? '回复 ${_replyingTo!.author}' : '写评论', style: const TextStyle(fontWeight: FontWeight.w700)),
-                            const SizedBox(height: 8),
-                            TextField(
-                              controller: _commentController,
-                              minLines: 2,
-                              maxLines: 4,
-                              decoration: InputDecoration(
-                                hintText: _replyingTo != null ? '说点什么…' : '说点什么吧…',
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      Material(
+                        color: theme.colorScheme.surface,
+                        borderRadius: BorderRadius.circular(20),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    _replyingTo != null ? Icons.reply_rounded : Icons.chat_bubble_outline_rounded,
+                                    size: 20,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    _replyingTo != null ? '回复 ${_replyingTo!.author}' : '写评论',
+                                    style: theme.textTheme.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      color: theme.colorScheme.onSurface,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                            const SizedBox(height: 8),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: ElevatedButton(
-                                onPressed: _sendingComment
-                                    ? null
-                                    : _submitComment,
-                                child: _sendingComment
-                                    ? const SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(strokeWidth: 2),
-                                      )
-                                    : const Text('发布评论'),
+                              const SizedBox(height: 12),
+                              TextField(
+                                controller: _commentController,
+                                minLines: 2,
+                                maxLines: 4,
+                                style: theme.textTheme.bodyLarge,
+                                decoration: InputDecoration(
+                                  hintText: _replyingTo != null ? '说点什么…' : '说点什么吧…',
+                                  hintStyle: TextStyle(color: theme.colorScheme.outline),
+                                  filled: true,
+                                  fillColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                ),
                               ),
-                            ),
-                          ],
+                              const SizedBox(height: 12),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: FilledButton.icon(
+                                  onPressed: _sendingComment ? null : _submitComment,
+                                  style: FilledButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  icon: _sendingComment
+                                      ? SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: theme.colorScheme.onPrimary,
+                                          ),
+                                        )
+                                      : const Icon(Icons.send_rounded, size: 18),
+                                  label: Text(_sendingComment ? '发送中…' : '发布评论'),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ],
