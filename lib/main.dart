@@ -522,7 +522,7 @@ class _AssistantPageState extends State<AssistantPage> {
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
                 child: Row(
                   children: [
-                    Text('AI 助手', style: Theme.of(context).textTheme.headlineLarge),
+                    Text('百晓通', style: Theme.of(context).textTheme.headlineLarge),
                     const Spacer(),
                     ValueListenableBuilder<String>(
                       valueListenable: AiProxyStore.url,
