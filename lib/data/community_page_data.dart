@@ -230,10 +230,19 @@ class CommunityDataRepository {
       if (res.statusCode != 200) return null;
       final data = jsonDecode(res.body) as Map<String, dynamic>?;
       if (data == null) return null;
-      final commentsList = data['comments'] as List<dynamic>? ?? [];
-      final comments = commentsList
-          .map((e) => CommunityComment.fromJson(e as Map<String, dynamic>))
-          .toList();
+      // 详情接口返回评论列表为 commentList，避免与话题的 comments 数量字段冲突
+      final commentsRaw = data['commentList'] ?? data['comments'];
+      final List<CommunityComment> comments = [];
+      if (commentsRaw is List) {
+        for (final item in commentsRaw) {
+          if (item is! Map<String, dynamic>) continue;
+          try {
+            comments.add(CommunityComment.fromJson(item));
+          } catch (_) {
+            // 单条解析失败则跳过，不影响其余评论展示
+          }
+        }
+      }
       final post = CommunityPost.fromJson(data);
       return TopicDetailResult(post: post, comments: comments);
     } catch (_) {
@@ -281,25 +290,122 @@ class CommunityDataRepository {
     }
   }
 
-  /// 发表评论（需登录）。成功返回新评论，失败返回 null
-  static Future<CommunityComment?> addTopicComment(String topicId, String content) async {
+  /// 发表评论或回复（需登录）。parentId/replyToAuthor 为二级回复时传
+  static Future<CommunityComment?> addTopicComment(
+    String topicId,
+    String content, {
+    int? parentId,
+    String? replyToAuthor,
+  }) async {
     final token = ProfileStore.authToken;
     final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
     if (token == null || token.isEmpty) return null;
     try {
+      final body = <String, dynamic>{'content': content};
+      if (parentId != null) body['parentId'] = parentId;
+      if (replyToAuthor != null && replyToAuthor.isNotEmpty) body['replyToAuthor'] = replyToAuthor;
       final res = await http.post(
         Uri.parse('$baseUrl/topics/$topicId/comments'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
         },
-        body: jsonEncode({'content': content}),
+        body: jsonEncode(body),
       );
       if (res.statusCode != 201) return null;
       final data = jsonDecode(res.body) as Map<String, dynamic>?;
       return data != null ? CommunityComment.fromJson(data) : null;
     } catch (_) {
       return null;
+    }
+  }
+
+  /// 编辑话题（仅作者）。成功返回更新后的话题，失败返回 null
+  static Future<CommunityPost?> updateTopic(
+    String topicId, {
+    required String title,
+    required String content,
+    String? summary,
+    String? imageUrl,
+  }) async {
+    final token = ProfileStore.authToken;
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    if (token == null || token.isEmpty) return null;
+    try {
+      final body = <String, dynamic>{'title': title, 'content': content};
+      if (summary != null) body['summary'] = summary;
+      if (imageUrl != null) body['imageUrl'] = imageUrl;
+      final res = await http.put(
+        Uri.parse('$baseUrl/topics/$topicId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(body),
+      );
+      if (res.statusCode != 200) return null;
+      final data = jsonDecode(res.body) as Map<String, dynamic>?;
+      return data != null ? CommunityPost.fromJson(data) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 删除话题（仅作者）。成功返回 true
+  static Future<bool> deleteTopic(String topicId) async {
+    final token = ProfileStore.authToken;
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    if (token == null || token.isEmpty) return false;
+    try {
+      final res = await http.delete(
+        Uri.parse('$baseUrl/topics/$topicId'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      return res.statusCode == 204;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 编辑评论（仅作者）。成功返回更新后的评论，失败返回 null
+  static Future<CommunityComment?> updateComment(
+    String topicId,
+    int commentId, {
+    required String content,
+  }) async {
+    final token = ProfileStore.authToken;
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    if (token == null || token.isEmpty) return null;
+    try {
+      final res = await http.put(
+        Uri.parse('$baseUrl/topics/$topicId/comments/$commentId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'content': content}),
+      );
+      if (res.statusCode != 200) return null;
+      final data = jsonDecode(res.body) as Map<String, dynamic>?;
+      return data != null ? CommunityComment.fromJson(data) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 删除评论（仅作者）。成功返回 true
+  static Future<bool> deleteComment(String topicId, int commentId) async {
+    final token = ProfileStore.authToken;
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    if (token == null || token.isEmpty) return false;
+    try {
+      final res = await http.delete(
+        Uri.parse('$baseUrl/topics/$topicId/comments/$commentId'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      return res.statusCode == 204;
+    } catch (_) {
+      return false;
     }
   }
 }

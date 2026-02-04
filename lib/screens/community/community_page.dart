@@ -197,7 +197,7 @@ class _CommunityPageState extends State<CommunityPage> with RouteAware {
                             MaterialPageRoute(builder: (_) => TopicDetailPage(post: post)),
                           );
                         },
-                        onLikeSuccess: _refresh,
+                        showLikeAndComment: false,
                       ),
                     ),
                 ],
@@ -315,12 +315,15 @@ class CommunityMasonry extends StatelessWidget {
     required this.posts,
     required this.onTap,
     this.onLikeSuccess,
+    /// 为 true 时仅展示，不显示点赞/评论按钮（用于今日热门）
+    this.showLikeAndComment = true,
   });
 
   final List<CommunityPost> posts;
   final ValueChanged<CommunityPost> onTap;
   /// 点赞/取消点赞成功后回调（如刷新列表）
   final VoidCallback? onLikeSuccess;
+  final bool showLikeAndComment;
 
   @override
   Widget build(BuildContext context) {
@@ -345,7 +348,8 @@ class CommunityMasonry extends StatelessWidget {
                     child: TopicPostCard(
                       data: post,
                       onTap: () => onTap(post),
-                      onLikePressed: onLikeSuccess,
+                      onLikePressed: showLikeAndComment ? onLikeSuccess : null,
+                      showLikeAndComment: showLikeAndComment,
                     ),
                   ),
                 )
@@ -362,7 +366,8 @@ class CommunityMasonry extends StatelessWidget {
                     child: TopicPostCard(
                       data: post,
                       onTap: () => onTap(post),
-                      onLikePressed: onLikeSuccess,
+                      onLikePressed: showLikeAndComment ? onLikeSuccess : null,
+                      showLikeAndComment: showLikeAndComment,
                     ),
                   ),
                 )
@@ -380,12 +385,15 @@ class TopicPostCard extends StatelessWidget {
     required this.data,
     required this.onTap,
     this.onLikePressed,
+    /// 为 false 时仅展示，不显示点赞/评论按钮（今日热门用）
+    this.showLikeAndComment = true,
   });
 
   final CommunityPost data;
   final VoidCallback onTap;
   /// 点赞/取消点赞成功后调用（用于刷新列表）
   final VoidCallback? onLikePressed;
+  final bool showLikeAndComment;
 
   Future<void> _onLikeTap(BuildContext context) async {
     if (ProfileStore.authToken == null || ProfileStore.authToken!.isEmpty) {
@@ -476,38 +484,50 @@ class TopicPostCard extends StatelessWidget {
               children: [
                 const Icon(Icons.local_offer_rounded, size: 18),
                 Text(data.circle),
-                GestureDetector(
-                  onTap: () => _onLikeTap(context),
-                  behavior: HitTestBehavior.opaque,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          data.likedByMe ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                          size: 18,
-                          color: data.likedByMe ? Colors.red : null,
-                        ),
-                        const SizedBox(width: 4),
-                        Text('${data.likes}'),
-                      ],
+                if (showLikeAndComment)
+                  GestureDetector(
+                    onTap: () => _onLikeTap(context),
+                    behavior: HitTestBehavior.opaque,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            data.likedByMe ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                            size: 18,
+                            color: data.likedByMe ? Colors.red : null,
+                          ),
+                          const SizedBox(width: 4),
+                          Text('${data.likes}'),
+                        ],
+                      ),
                     ),
+                  )
+                else
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.favorite_border_rounded, size: 18),
+                      const SizedBox(width: 4),
+                      Text('${data.likes}'),
+                    ],
                   ),
-                ),
                 const Icon(Icons.chat_bubble_outline_rounded, size: 18),
                 Text('${data.comments}'),
               ],
             ),
-            const SizedBox(height: 10),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: () => onTap(),
-                icon: const Icon(Icons.chat_bubble_outline_rounded, size: 16),
-                label: const Text('评论'),
+            if (showLikeAndComment) ...[
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: () => onTap(),
+                  icon: const Icon(Icons.chat_bubble_outline_rounded, size: 16),
+                  label: const Text('评论'),
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),
@@ -874,6 +894,10 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
   bool _loading = true;
   bool _sendingComment = false;
   final TextEditingController _commentController = TextEditingController();
+  /// 当前正在回复的评论（id, author），为 null 表示发一级评论
+  CommunityComment? _replyingTo;
+  /// 已展开回复的一级评论 id（默认收起）
+  final Set<String> _expandedReplyIds = {};
 
   @override
   void initState() {
@@ -934,15 +958,375 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
       return;
     }
     setState(() => _sendingComment = true);
-    final newComment = await CommunityDataRepository.addTopicComment(_post.id, text);
+    final newComment = await CommunityDataRepository.addTopicComment(
+      _post.id,
+      text,
+      parentId: _replyingTo?.id,
+      replyToAuthor: _replyingTo?.author,
+    );
     if (!mounted) return;
-    setState(() => _sendingComment = false);
+    setState(() {
+      _sendingComment = false;
+      _replyingTo = null;
+    });
     if (newComment != null) {
       _commentController.clear();
+      _insertComment(newComment);
+    }
+  }
+
+  List<CommunityComment> _insertReplyInto(List<CommunityComment> list, CommunityComment newComment) {
+    return list.map((c) {
+      if (c.id == newComment.parentId) {
+        return CommunityComment(
+          id: c.id,
+          author: c.author,
+          content: c.content,
+          timeLabel: c.timeLabel,
+          parentId: c.parentId,
+          replyToAuthor: c.replyToAuthor,
+          replies: [...c.replies, newComment],
+        );
+      }
+      return CommunityComment(
+        id: c.id,
+        author: c.author,
+        content: c.content,
+        timeLabel: c.timeLabel,
+        parentId: c.parentId,
+        replyToAuthor: c.replyToAuthor,
+        replies: _insertReplyInto(c.replies, newComment),
+      );
+    }).toList();
+  }
+
+  void _insertComment(CommunityComment newComment) {
+    if (newComment.parentId == null) {
       setState(() {
         _comments = [newComment, ..._comments];
         _post = _post.copyWith(comments: _post.comments + 1);
       });
+      return;
+    }
+    setState(() {
+      _comments = _insertReplyInto(_comments, newComment);
+      _post = _post.copyWith(comments: _post.comments + 1);
+    });
+  }
+
+  bool _isRepliesExpanded(CommunityComment comment) =>
+      comment.id != null && _expandedReplyIds.contains('${comment.id}');
+
+  void _toggleReplies(CommunityComment comment) {
+    if (comment.id == null) return;
+    setState(() {
+      final key = '${comment.id}';
+      if (_expandedReplyIds.contains(key)) {
+        _expandedReplyIds.remove(key);
+      } else {
+        _expandedReplyIds.add(key);
+      }
+    });
+  }
+
+  Widget _buildCommentTile(CommunityComment comment, {bool isReply = false}) {
+    final theme = Theme.of(context);
+    final isExpanded = comment.replies.isNotEmpty && _isRepliesExpanded(comment);
+    final hasReplies = comment.replies.isNotEmpty;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: isReply ? 6 : 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Material(
+            color: isReply
+                ? theme.colorScheme.surfaceContainerHighest.withOpacity(0.5)
+                : theme.colorScheme.surface,
+            borderRadius: BorderRadius.circular(12),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(isReply ? 12 : 14, 12, 14, 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (isReply) ...[
+                      Container(
+                        width: 3,
+                        margin: const EdgeInsets.only(right: 10, top: 6, bottom: 6),
+                        decoration: BoxDecoration(
+                          color: _post.accent.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ] else
+                      CircleAvatar(
+                        radius: 18,
+                        backgroundColor: _post.accent.withOpacity(0.25),
+                        child: Text(
+                          comment.author.isNotEmpty ? comment.author[0].toUpperCase() : '?',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: _post.accent,
+                          ),
+                        ),
+                      ),
+                    if (!isReply) const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                comment.author,
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color: theme.colorScheme.onSurface,
+                                ),
+                              ),
+                              if (comment.replyToAuthor != null && comment.replyToAuthor!.isNotEmpty) ...[
+                                const SizedBox(width: 6),
+                                Text(
+                                  '回复 ${comment.replyToAuthor}',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.outline,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            comment.content,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              height: 1.4,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Text(
+                                comment.timeLabel,
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: theme.colorScheme.outline,
+                                ),
+                              ),
+                              // 只能回复别人的评论：自己的评论不展示“回复”
+                              if (comment.id != null && !comment.isMine) ...[
+                                const SizedBox(width: 16),
+                                InkWell(
+                                  onTap: () => setState(() => _replyingTo = comment),
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
+                                    child: Text(
+                                      '回复',
+                                      style: theme.textTheme.labelMedium?.copyWith(
+                                        color: _post.accent,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              if (comment.isMine && comment.id != null) ...[
+                                const SizedBox(width: 12),
+                                InkWell(
+                                  onTap: () => _editComment(comment),
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
+                                    child: Text(
+                                      '编辑',
+                                      style: theme.textTheme.labelMedium?.copyWith(
+                                        color: theme.colorScheme.outline,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                InkWell(
+                                  onTap: () => _deleteComment(comment),
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
+                                    child: Text(
+                                      '删除',
+                                      style: theme.textTheme.labelMedium?.copyWith(
+                                        color: theme.colorScheme.error,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          if (hasReplies)
+            Padding(
+              padding: const EdgeInsets.only(left: 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 4),
+                  InkWell(
+                    onTap: () => _toggleReplies(comment),
+                    borderRadius: BorderRadius.circular(6),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                            size: 18,
+                            color: theme.colorScheme.outline,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            isExpanded ? '收起回复' : '展开 ${comment.replies.length} 条回复',
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              color: theme.colorScheme.outline,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (isExpanded) ...[
+                    const SizedBox(height: 6),
+                    ...comment.replies.map((r) => _buildCommentTile(r, isReply: true)),
+                  ],
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _editComment(CommunityComment comment) async {
+    if (comment.id == null) return;
+    final controller = TextEditingController(text: comment.content);
+    final newContent = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('编辑评论'),
+        content: TextField(
+          controller: controller,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            hintText: '评论内容',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (newContent == null || newContent.isEmpty || !mounted) return;
+    final updated = await CommunityDataRepository.updateComment(
+      _post.id,
+      comment.id!,
+      content: newContent,
+    );
+    if (!mounted) return;
+    if (updated != null) {
+      setState(() {
+        _comments = _replaceCommentInList(_comments, comment.id!, updated.copyWith(replies: comment.replies, isMine: true));
+      });
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('评论已更新')));
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('更新失败，请重试')));
+    }
+  }
+
+  Future<void> _deleteComment(CommunityComment comment) async {
+    if (comment.id == null) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除评论'),
+        content: const Text('确定要删除这条评论吗？删除后无法恢复。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('删除', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final success = await CommunityDataRepository.deleteComment(_post.id, comment.id!);
+    if (!mounted) return;
+    if (success) {
+      setState(() {
+        _comments = _removeCommentFromList(_comments, comment.id!);
+        _post = _post.copyWith(comments: _post.comments - 1);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('评论已删除')));
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('删除失败，请重试')));
+    }
+  }
+
+  List<CommunityComment> _replaceCommentInList(List<CommunityComment> list, int id, CommunityComment replacement) {
+    return list.map((c) {
+      if (c.id == id) return replacement;
+      return c.copyWith(replies: _replaceCommentInList(c.replies, id, replacement));
+    }).toList();
+  }
+
+  List<CommunityComment> _removeCommentFromList(List<CommunityComment> list, int id) {
+    final result = <CommunityComment>[];
+    for (final c in list) {
+      if (c.id == id) continue;
+      result.add(c.copyWith(replies: _removeCommentFromList(c.replies, id)));
+    }
+    return result;
+  }
+
+  Future<void> _confirmDelete() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除话题'),
+        content: const Text('确定要删除这条话题吗？删除后无法恢复。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('删除', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final success = await CommunityDataRepository.deleteTopic(_post.id);
+    if (!mounted) return;
+    if (success) {
+      Navigator.of(context).pop(true);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('删除失败，请重试')),
+      );
     }
   }
 
@@ -966,6 +1350,49 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                           ),
                           const SizedBox(width: 6),
                           Text('话题详情', style: Theme.of(context).textTheme.headlineLarge),
+                          const Spacer(),
+                          if (_post.communityId != null && _post.communityId!.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: FilledButton.icon(
+                                onPressed: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => CircleHomePage(
+                                        circleId: _post.communityId!,
+                                        circleName: _post.circle,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(Icons.group_rounded, size: 18),
+                                label: const Text('进入圈子'),
+                              ),
+                            ),
+                          if (_post.isMine)
+                            PopupMenuButton<String>(
+                              icon: const Icon(Icons.more_vert_rounded),
+                              onSelected: (value) async {
+                                if (value == 'edit') {
+                                  final updated = await Navigator.of(context).push<CommunityPost>(
+                                    MaterialPageRoute(
+                                      builder: (_) => TopicEditorPage(
+                                        communities: [Topic(id: _post.communityId ?? '', name: _post.circle)],
+                                        presetCircleName: _post.circle,
+                                        initialTopic: _post,
+                                      ),
+                                    ),
+                                  );
+                                  if (updated != null && mounted) setState(() => _post = updated);
+                                } else if (value == 'delete') {
+                                  _confirmDelete();
+                                }
+                              },
+                              itemBuilder: (context) => [
+                                const PopupMenuItem(value: 'edit', child: Text('编辑')),
+                                const PopupMenuItem(value: 'delete', child: Text('删除', style: TextStyle(color: Colors.red))),
+                              ],
+                            ),
                         ],
                       ),
                       const SizedBox(height: 12),
@@ -979,7 +1406,22 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(_post.title, style: Theme.of(context).textTheme.titleLarge),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(_post.title, style: Theme.of(context).textTheme.titleLarge),
+                                ),
+                                if (_post.isMine)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: _post.accent.withOpacity(0.3),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: const Text('我的', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                                  ),
+                              ],
+                            ),
                             const SizedBox(height: 8),
                             Text('来自 ${_post.circle} 圈 · ${_post.timeLabel}'),
                             const SizedBox(height: 12),
@@ -1035,53 +1477,56 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      Text('评论', style: Theme.of(context).textTheme.titleLarge),
+                      Row(
+                        children: [
+                          Text('评论', style: Theme.of(context).textTheme.titleLarge),
+                          if (_post.comments > 0) ...[
+                            const SizedBox(width: 8),
+                            Text('(${_post.comments})', style: TextStyle(fontSize: 14, color: Theme.of(context).colorScheme.outline)),
+                          ],
+                        ],
+                      ),
                       const SizedBox(height: 10),
                       if (_comments.isEmpty)
-                        const EmptyStateCard()
-                      else
-                        Column(
-                          children: _comments
-                              .map(
-                                (comment) => Container(
-                                  margin: const EdgeInsets.only(bottom: 10),
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(color: const Color(0xFFE9E0C9)),
-                                  ),
-                                  child: Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      CircleAvatar(
-                                        radius: 16,
-                                        backgroundColor: _post.accent.withOpacity(0.3),
-                                        child: const Icon(Icons.face_rounded, size: 18, color: Colors.white),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              comment.author,
-                                              style: const TextStyle(fontWeight: FontWeight.w700),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(comment.content),
-                                            const SizedBox(height: 4),
-                                            Text(comment.timeLabel, style: const TextStyle(fontSize: 11, color: Color(0xFF8A8370))),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                        _post.comments > 0
+                            ? Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                child: Column(
+                                  children: [
+                                    const Text('评论加载异常或暂无评论', style: TextStyle(color: Color(0xFF8A8370))),
+                                    const SizedBox(height: 8),
+                                    TextButton.icon(
+                                      onPressed: () async {
+                                        setState(() => _loading = true);
+                                        await _loadDetail();
+                                      },
+                                      icon: const Icon(Icons.refresh_rounded, size: 18),
+                                      label: const Text('重新加载评论'),
+                                    ),
+                                  ],
                                 ),
                               )
-                              .toList(),
+                            : const EmptyStateCard()
+                      else
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: _comments.map((comment) => _buildCommentTile(comment)).toList(),
                         ),
                       const SizedBox(height: 12),
+                      if (_replyingTo != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            children: [
+                              Text('回复 ${_replyingTo!.author}', style: TextStyle(fontSize: 12, color: _post.accent)),
+                              const SizedBox(width: 8),
+                              TextButton(
+                                onPressed: () => setState(() => _replyingTo = null),
+                                child: const Text('取消'),
+                              ),
+                            ],
+                          ),
+                        ),
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
@@ -1092,14 +1537,14 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('写评论', style: TextStyle(fontWeight: FontWeight.w700)),
+                            Text(_replyingTo != null ? '回复 ${_replyingTo!.author}' : '写评论', style: const TextStyle(fontWeight: FontWeight.w700)),
                             const SizedBox(height: 8),
                             TextField(
                               controller: _commentController,
                               minLines: 2,
                               maxLines: 4,
                               decoration: InputDecoration(
-                                hintText: '说点什么吧…',
+                                hintText: _replyingTo != null ? '说点什么…' : '说点什么吧…',
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                               ),
                             ),
@@ -1122,26 +1567,6 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          TextButton(
-                            onPressed: () {
-                              final cid = _post.communityId ?? '';
-                              if (cid.isEmpty) return;
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => CircleHomePage(
-                                    circleId: cid,
-                                    circleName: _post.circle,
-                                  ),
-                                ),
-                              );
-                            },
-                            child: const Text('进入圈子'),
-                          ),
-                        ],
-                      ),
                     ],
                   ),
           ),
@@ -1152,11 +1577,18 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
 }
 
 class TopicEditorPage extends StatefulWidget {
-  const TopicEditorPage({super.key, required this.communities, this.presetCircleName});
+  const TopicEditorPage({
+    super.key,
+    required this.communities,
+    this.presetCircleName,
+    this.initialTopic,
+  });
 
   /// 可选社群列表（含 id、name），用于选择发布到哪个圈子
   final List<Topic> communities;
   final String? presetCircleName;
+  /// 编辑时传入原话题，预填标题与内容并提交时调用更新接口
+  final CommunityPost? initialTopic;
 
   @override
   State<TopicEditorPage> createState() => _TopicEditorPageState();
@@ -1169,15 +1601,20 @@ class _TopicEditorPageState extends State<TopicEditorPage> {
   Uint8List? _imageBytes;
   String? _imageMime;
   bool _submitting = false;
+  bool get _isEditMode => widget.initialTopic != null;
 
   @override
   void initState() {
     super.initState();
+    if (widget.initialTopic != null) {
+      _titleController.text = widget.initialTopic!.title;
+      _contentController.text = widget.initialTopic!.content;
+    }
     if (widget.communities.isEmpty) {
       _selectedTopic = const Topic(id: 'other', name: '其他');
       return;
     }
-    final preset = widget.presetCircleName;
+    final preset = widget.presetCircleName ?? widget.initialTopic?.circle;
     _selectedTopic = preset != null
         ? widget.communities.firstWhere(
             (t) => t.name == preset,
@@ -1205,6 +1642,27 @@ class _TopicEditorPageState extends State<TopicEditorPage> {
     if (_submitting) return;
     setState(() => _submitting = true);
     final summary = content.length > 500 ? '${content.substring(0, 500)}…' : content;
+    if (_isEditMode && widget.initialTopic != null) {
+      final updated = await CommunityDataRepository.updateTopic(
+        widget.initialTopic!.id,
+        title: title,
+        content: content,
+        summary: summary,
+      );
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      if (updated == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('更新失败，请重试')),
+        );
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已保存')),
+      );
+      Navigator.of(context).pop(updated);
+      return;
+    }
     final post = await CommunityDataRepository.createTopic(
       communityId: _selectedTopic.id,
       title: title,
@@ -1255,11 +1713,11 @@ class _TopicEditorPageState extends State<TopicEditorPage> {
                       icon: const Icon(Icons.close_rounded),
                     ),
                     const SizedBox(width: 6),
-                    Text('发布话题', style: Theme.of(context).textTheme.headlineLarge),
+                    Text(_isEditMode ? '编辑话题' : '发布话题', style: Theme.of(context).textTheme.headlineLarge),
                     const Spacer(),
                     TextButton(
                       onPressed: _submitting ? null : _submit,
-                      child: _submitting ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('发布'),
+                      child: _submitting ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : Text(_isEditMode ? '保存' : '发布'),
                     ),
                   ],
                 ),
@@ -1303,21 +1761,23 @@ class _TopicEditorPageState extends State<TopicEditorPage> {
                       ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                const Text('选择圈子'),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: widget.communities.map((topic) {
-                    final active = _selectedTopic.id == topic.id;
-                    return ChoiceChip(
-                      label: Text(topic.name),
-                      selected: active,
-                      onSelected: (_) => setState(() => _selectedTopic = topic),
-                    );
-                  }).toList(),
-                ),
+                if (!_isEditMode) ...[
+                  const SizedBox(height: 12),
+                  const Text('选择圈子'),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: widget.communities.map((topic) {
+                      final active = _selectedTopic.id == topic.id;
+                      return ChoiceChip(
+                        label: Text(topic.name),
+                        selected: active,
+                        onSelected: (_) => setState(() => _selectedTopic = topic),
+                      );
+                    }).toList(),
+                  ),
+                ],
               ],
             ),
           ),

@@ -44,6 +44,11 @@ services:
       - ./backend/sql/010_communities_seed.sql:/docker-entrypoint-initdb.d/010_communities_seed.sql:ro
       - ./backend/sql/011_topics_seed.sql:/docker-entrypoint-initdb.d/011_topics_seed.sql:ro
       - ./backend/sql/012_topic_likes_comments_schema.sql:/docker-entrypoint-initdb.d/012_topic_likes_comments_schema.sql:ro
+      - ./backend/sql/013_topic_comments_reply_schema.sql:/docker-entrypoint-initdb.d/013_topic_comments_reply_schema.sql:ro
+      - ./backend/sql/014_topic_comments_seed.sql:/docker-entrypoint-initdb.d/014_topic_comments_seed.sql:ro
+      - ./backend/sql/015_users_seed.sql:/docker-entrypoint-initdb.d/015_users_seed.sql:ro
+      - ./backend/sql/016_fake_data_full_seed.sql:/docker-entrypoint-initdb.d/016_fake_data_full_seed.sql:ro
+      - ./backend/sql/017_community_topics_seed.sql:/docker-entrypoint-initdb.d/017_community_topics_seed.sql:ro
     ports:
       - "${POSTGRES_PORT:-5433}:5432"
     healthcheck:

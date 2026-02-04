@@ -19,6 +19,7 @@ class CommunityPost {
     this.imageUrl,
     this.communityId,
     this.likedByMe = false,
+    this.isMine = false,
   });
 
   final String id;
@@ -37,6 +38,8 @@ class CommunityPost {
   final String? communityId;
   /// 当前用户是否已点赞（依赖登录态）
   final bool likedByMe;
+  /// 是否为当前用户发布的话题（详情接口返回）
+  final bool isMine;
 
   factory CommunityPost.fromJson(Map<String, dynamic> json) {
     final circle = json['circle'] as String? ?? '';
@@ -57,6 +60,7 @@ class CommunityPost {
       imageUrl: json['imageUrl'] as String?,
       communityId: json['communityId'] as String?,
       likedByMe: json['likedByMe'] == true,
+      isMine: json['isMine'] == true,
     );
   }
 
@@ -75,6 +79,7 @@ class CommunityPost {
     String? imageUrl,
     String? communityId,
     bool? likedByMe,
+    bool? isMine,
   }) {
     return CommunityPost(
       id: id ?? this.id,
@@ -91,6 +96,7 @@ class CommunityPost {
       imageUrl: imageUrl ?? this.imageUrl,
       communityId: communityId ?? this.communityId,
       likedByMe: likedByMe ?? this.likedByMe,
+      isMine: isMine ?? this.isMine,
     );
   }
 
@@ -117,24 +123,78 @@ class CommunityComment {
     required this.author,
     required this.content,
     required this.timeLabel,
+    this.id,
+    this.parentId,
+    this.replyToAuthor,
+    this.replies = const [],
+    this.isMine = false,
   });
 
+  final int? id;
   final String author;
   final String content;
   final String timeLabel;
+  /// 一级评论为 null，二级为被回复评论的 id
+  final int? parentId;
+  /// 回复对象的昵称，用于展示「回复 xxx」
+  final String? replyToAuthor;
+  /// 该评论下的回复列表（仅一级评论有）
+  final List<CommunityComment> replies;
+  /// 是否为当前用户发表的评论（可编辑/删除）
+  final bool isMine;
+
+  CommunityComment copyWith({
+    int? id,
+    String? author,
+    String? content,
+    String? timeLabel,
+    int? parentId,
+    String? replyToAuthor,
+    List<CommunityComment>? replies,
+    bool? isMine,
+  }) {
+    return CommunityComment(
+      id: id ?? this.id,
+      author: author ?? this.author,
+      content: content ?? this.content,
+      timeLabel: timeLabel ?? this.timeLabel,
+      parentId: parentId ?? this.parentId,
+      replyToAuthor: replyToAuthor ?? this.replyToAuthor,
+      replies: replies ?? this.replies,
+      isMine: isMine ?? this.isMine,
+    );
+  }
 
   factory CommunityComment.fromJson(Map<String, dynamic> json) {
+    final repliesList = json['replies'] as List<dynamic>? ?? [];
+    int? toInt(dynamic v) {
+      if (v == null) return null;
+      if (v is int) return v;
+      if (v is num) return v.toInt();
+      if (v is String) return int.tryParse(v);
+      return null;
+    }
     return CommunityComment(
+      id: toInt(json['id']),
       author: json['author'] as String? ?? '',
       content: json['content'] as String? ?? '',
       timeLabel: json['timeLabel'] as String? ?? '',
+      parentId: toInt(json['parentId']),
+      replyToAuthor: json['replyToAuthor'] as String?,
+      replies: repliesList.map((e) => CommunityComment.fromJson(e as Map<String, dynamic>)).toList(),
+      isMine: json['isMine'] == true,
     );
   }
 
   Map<String, dynamic> toJson() => {
+        if (id != null) 'id': id,
         'author': author,
         'content': content,
         'timeLabel': timeLabel,
+        if (parentId != null) 'parentId': parentId,
+        if (replyToAuthor != null) 'replyToAuthor': replyToAuthor,
+        if (replies.isNotEmpty) 'replies': replies.map((e) => e.toJson()).toList(),
+        'isMine': isMine,
       };
 }
 
