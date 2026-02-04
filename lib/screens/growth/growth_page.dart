@@ -9,10 +9,12 @@ import 'profile_page.dart';
 
 /// 成长页：我的、每日提醒、打卡、今日学习（数据来自 GET /growth 接口）
 class GrowthPage extends StatefulWidget {
-  const GrowthPage({super.key, this.selectedTabIndex});
+  const GrowthPage({super.key, this.selectedTabIndex, this.onSwitchToTab});
 
   /// 当前选中的底部 Tab 下标，0 表示本页。传入后切回本 Tab 时会自动重新请求接口以展示最新数据。
   final int? selectedTabIndex;
+  /// 切换到指定 Tab（如 1=社群、3=擂台、4=学习），用于每日任务跳转
+  final void Function(int index)? onSwitchToTab;
 
   @override
   State<GrowthPage> createState() => _GrowthPageState();
@@ -41,6 +43,26 @@ class _GrowthPageState extends State<GrowthPage> {
     setState(() {
       _dataFuture = GrowthDataRepository.load();
     });
+  }
+
+  /// 每日任务点击：学习/视频→学习页(4)，擂台→擂台(3)，社群→社群(1)
+  void _onDailyTaskTap(BuildContext context, DailyTask task) {
+    final onSwitchToTab = widget.onSwitchToTab;
+    if (onSwitchToTab == null) return;
+    switch (task.id) {
+      case 'school':
+      case 'video':
+        onSwitchToTab(4);
+        break;
+      case 'arena':
+        onSwitchToTab(3);
+        break;
+      case 'forum':
+        onSwitchToTab(1);
+        break;
+      default:
+        break;
+    }
   }
 
   /// 解析 "HH:mm" 为 TimeOfDay，无效则默认 20:00
@@ -174,7 +196,12 @@ class _GrowthPageState extends State<GrowthPage> {
                   const SizedBox(height: 12),
                   Reveal(
                     delay: 180,
-                    child: DailyTasksCard(tasks: data.dailyTasks),
+                    child: DailyTasksCard(
+                      tasks: data.dailyTasks,
+                      onTaskTap: widget.onSwitchToTab != null
+                          ? (task) => _onDailyTaskTap(context, task)
+                          : null,
+                    ),
                   ),
                   if (data.growthCards!.isNotEmpty) ...[
                     const SizedBox(height: 18),
@@ -190,7 +217,12 @@ class _GrowthPageState extends State<GrowthPage> {
                   const SizedBox(height: 12),
                   Reveal(
                     delay: 220,
-                    child: TodayLearningCard(data: data.todayLearning),
+                    child: TodayLearningCard(
+                      data: data.todayLearning,
+                      onTap: widget.onSwitchToTab != null
+                          ? () => widget.onSwitchToTab!(4)
+                          : null,
+                    ),
                   ),
                   ],
                 ),

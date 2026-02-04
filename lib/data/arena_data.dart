@@ -519,6 +519,89 @@ class ChallengeSessionDetail {
   }
 }
 
+/// 局域网对战记录摘要（最近挑战列表项）
+class DuelSessionSummary {
+  const DuelSessionSummary({
+    required this.id,
+    required this.opponentPhone,
+    required this.opponentName,
+    required this.myScore,
+    required this.opponentScore,
+    required this.result,
+    required this.createdAt,
+  });
+
+  final int id;
+  final String opponentPhone;
+  final String opponentName;
+  final int myScore;
+  final int opponentScore;
+  final String result;
+  final dynamic createdAt;
+
+  factory DuelSessionSummary.fromJson(Map<String, dynamic> json) {
+    return DuelSessionSummary(
+      id: (json['id'] is num) ? (json['id'] as num).toInt() : 0,
+      opponentPhone: json['opponentPhone']?.toString() ?? '',
+      opponentName: json['opponentName']?.toString() ?? '对手',
+      myScore: (json['myScore'] is num) ? (json['myScore'] as num).toInt() : 0,
+      opponentScore: (json['opponentScore'] is num) ? (json['opponentScore'] as num).toInt() : 0,
+      result: json['result']?.toString() ?? 'lose',
+      createdAt: json['createdAt'],
+    );
+  }
+}
+
+/// 局域网对战记录：提交、历史
+class ArenaDuelRepository {
+  static Future<bool> submitDuelRecord({
+    required String opponentPhone,
+    required int myScore,
+    required int opponentScore,
+  }) async {
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    final token = ProfileStore.authToken;
+    if (token == null || token.isEmpty) return false;
+    if (opponentPhone.isEmpty) return false;
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/arena/duel/submit'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'opponentPhone': opponentPhone,
+          'myScore': myScore,
+          'opponentScore': opponentScore,
+        }),
+      );
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<List<DuelSessionSummary>> loadDuelHistory({int limit = 20}) async {
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    final token = ProfileStore.authToken;
+    if (token == null || token.isEmpty) return [];
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/arena/duel/history?limit=$limit'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (res.statusCode != 200) return [];
+      final data = jsonDecode(res.body) as Map<String, dynamic>?;
+      final list = data?['list'];
+      if (list is! List) return [];
+      return list.map((e) => DuelSessionSummary.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+}
+
 /// 局域网 PK 结束后提交得分（只更新在线 PK 排行用的 pk_score）
 class ArenaPkRepository {
   static Future<bool> submitScore(int score) async {

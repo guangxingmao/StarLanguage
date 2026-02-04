@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/arena_data.dart';
 import '../../data/assistant_route.dart';
+import '../../data/profile.dart';
 import '../../data/demo_data.dart';
 import '../../lan/lan_duel.dart';
 import '../../widgets/reveal.dart';
@@ -316,10 +317,37 @@ class _ArenaMyRankPage extends StatefulWidget {
   State<_ArenaMyRankPage> createState() => _ArenaMyRankPageState();
 }
 
+/// 最近挑战单项：单人挑战或局域网对战，用于合并排序
+class _RecentChallengeEntry {
+  _RecentChallengeEntry.challenge(ChallengeSessionSummary s) : challenge = s, duel = null;
+  _RecentChallengeEntry.duel(DuelSessionSummary s) : challenge = null, duel = s;
+
+  final ChallengeSessionSummary? challenge;
+  final DuelSessionSummary? duel;
+
+  DateTime get sortDate {
+    if (challenge != null) return _parseDate(challenge!.createdAt);
+    return _parseDate(duel!.createdAt);
+  }
+}
+
+DateTime _parseDate(dynamic createdAt) {
+  if (createdAt == null) return DateTime(0);
+  if (createdAt is DateTime) return createdAt.isUtc ? createdAt.toLocal() : createdAt;
+  if (createdAt is String) {
+    final d = DateTime.tryParse(createdAt);
+    return d != null ? (d.isUtc ? d.toLocal() : d) : DateTime(0);
+  }
+  if (createdAt is num) {
+    return DateTime.fromMillisecondsSinceEpoch(createdAt.toInt() * 1000, isUtc: true).toLocal();
+  }
+  return DateTime(0);
+}
+
 class _ArenaMyRankPageState extends State<_ArenaMyRankPage> {
   List<LeaderboardEntry> _pkList = [];
   List<LeaderboardEntry> _personalList = [];
-  List<ChallengeSessionSummary> _challengeHistory = [];
+  List<_RecentChallengeEntry> _recentList = [];
   bool _loading = true;
 
   @override
@@ -333,17 +361,23 @@ class _ArenaMyRankPageState extends State<_ArenaMyRankPage> {
       ArenaDataRepository.loadFullScoreLeaderboard(type: ScoreLeaderboardType.pk),
       ArenaDataRepository.loadFullScoreLeaderboard(type: ScoreLeaderboardType.personal),
       ArenaChallengeRepository.loadHistory(limit: 20),
+      ArenaDuelRepository.loadDuelHistory(limit: 20),
     ]);
     if (!mounted) return;
     final pkList = results[0] as List<LeaderboardEntry>;
     final personalList = results[1] as List<LeaderboardEntry>;
-    final history = results[2] as List<ChallengeSessionSummary>;
+    final challengeHistory = results[2] as List<ChallengeSessionSummary>;
+    final duelHistory = results[3] as List<DuelSessionSummary>;
+    final merged = <_RecentChallengeEntry>[
+      ...challengeHistory.map((s) => _RecentChallengeEntry.challenge(s)),
+      ...duelHistory.map((s) => _RecentChallengeEntry.duel(s)),
+    ]..sort((a, b) => b.sortDate.compareTo(a.sortDate));
     final pkMerged = _mergeYou(pkList, widget.yourPkScore);
     final personalMerged = _mergeYou(personalList, widget.yourScore);
     setState(() {
       _pkList = pkMerged;
       _personalList = personalMerged;
-      _challengeHistory = history;
+      _recentList = merged;
       _loading = false;
     });
   }
@@ -429,7 +463,7 @@ class _ArenaMyRankPageState extends State<_ArenaMyRankPage> {
                           const SizedBox(height: 24),
                           Text('最近挑战', style: Theme.of(context).textTheme.titleLarge),
                           const SizedBox(height: 12),
-                          if (_challengeHistory.isEmpty)
+                          if (_recentList.isEmpty)
                             Container(
                               padding: const EdgeInsets.all(20),
                               decoration: BoxDecoration(
@@ -439,22 +473,26 @@ class _ArenaMyRankPageState extends State<_ArenaMyRankPage> {
                               ),
                               child: Center(
                                 child: Text(
-                                  '暂无挑战记录，去完成一次单人挑战吧～',
+                                  '暂无挑战记录，去完成一次单人挑战或局域网对战吧～',
                                   style: TextStyle(color: Colors.grey[600], fontSize: 14),
                                 ),
                               ),
                             )
                           else
-                            ..._challengeHistory.map(
-                              (s) => _ChallengeHistoryTile(
-                                summary: s,
-                                onTap: () => Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => ChallengeDetailPage(sessionId: s.id),
+                            ..._recentList.map((entry) {
+                              if (entry.challenge != null) {
+                                final s = entry.challenge!;
+                                return _ChallengeHistoryTile(
+                                  summary: s,
+                                  onTap: () => Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => ChallengeDetailPage(sessionId: s.id),
+                                    ),
                                   ),
-                                ),
-                              ),
-                            ),
+                                );
+                              }
+                              return _DuelHistoryTile(summary: entry.duel!);
+                            }),
                         ],
                       ),
                     ),
@@ -531,6 +569,63 @@ class _ChallengeHistoryTile extends StatelessWidget {
               const Icon(Icons.chevron_right_rounded, color: Color(0xFF9E9E9E)),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 局域网对战最近挑战列表项
+class _DuelHistoryTile extends StatelessWidget {
+  const _DuelHistoryTile({required this.summary});
+
+  final DuelSessionSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final isWin = summary.result == 'win';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: const Color(0xFFFFD166)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text('局域网对战 · ${summary.opponentName}', style: Theme.of(context).textTheme.titleSmall),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: isWin ? const Color(0xFF4CAF50) : Colors.grey[300],
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          isWin ? '胜利' : '失败',
+                          style: TextStyle(fontSize: 12, color: isWin ? Colors.white : Colors.grey[700]),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _ChallengeHistoryTile._formatDate(summary.createdAt),
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            ),
+            Text('${summary.myScore} : ${summary.opponentScore}', style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFFB35C00))),
+          ],
         ),
       ),
     );
@@ -1055,7 +1150,7 @@ class _LanDuelSheetState extends State<_LanDuelSheet> {
         return;
       }
       conn.send({'type': 'accept'});
-      _startNetworkDuel(conn);
+      _startNetworkDuel(conn, join);
     } catch (e) {
       setState(() => _status = '创建失败：$e');
     }
@@ -1072,7 +1167,12 @@ class _LanDuelSheetState extends State<_LanDuelSheet> {
       final client = LanDuelClient();
       final conn = await client.connect(ip);
       _connection = conn;
-      conn.send({'type': 'join', 'name': '星知玩家'});
+      final profile = ProfileStore.profile.value;
+      conn.send({
+        'type': 'join',
+        'name': profile.name ?? '星知玩家',
+        'phone': profile.phoneNumber ?? '',
+      });
       setState(() => _status = '等待对方确认…');
       await for (final msg in conn.messages) {
         if (msg['type'] == 'accept') {
@@ -1111,16 +1211,21 @@ class _LanDuelSheetState extends State<_LanDuelSheet> {
     return result ?? false;
   }
 
-  void _startNetworkDuel(DuelConnection connection) {
+  void _startNetworkDuel(DuelConnection connection, Map<String, dynamic>? joinPayload) {
     final seed = DateTime.now().millisecondsSinceEpoch % 1000000;
     final count = 10;
+    final profile = ProfileStore.profile.value;
     connection.send({
       'type': 'start',
       'topic': widget.topic,
       'subtopic': widget.subtopic,
       'seed': seed,
       'count': count,
+      'phone': profile.phoneNumber ?? '',
+      'name': profile.name ?? '房主',
     });
+    final opponentPhone = joinPayload?['phone']?.toString() ?? '';
+    final opponentName = joinPayload?['name']?.toString() ?? '对手';
     Navigator.of(context).pop();
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -1133,6 +1238,8 @@ class _LanDuelSheetState extends State<_LanDuelSheet> {
           count: count,
           isHost: true,
           room: null,
+          opponentPhone: opponentPhone,
+          opponentName: opponentName,
         ),
       ),
     );
@@ -1143,6 +1250,8 @@ class _LanDuelSheetState extends State<_LanDuelSheet> {
     final subtopic = msg['subtopic']?.toString() ?? widget.subtopic;
     final seed = (msg['seed'] as num?)?.toInt() ?? 0;
     final count = (msg['count'] as num?)?.toInt() ?? 10;
+    final opponentPhone = msg['phone']?.toString() ?? '';
+    final opponentName = msg['name']?.toString() ?? '对手';
     Navigator.of(context).pop();
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -1155,6 +1264,8 @@ class _LanDuelSheetState extends State<_LanDuelSheet> {
           count: count,
           isHost: false,
           room: null,
+          opponentPhone: opponentPhone,
+          opponentName: opponentName,
         ),
       ),
     );

@@ -159,6 +159,64 @@ function routes(app) {
     }
   });
 
+  // 局域网对战记录：提交本场对战（我方得分、对手手机号、对手得分），用于最近挑战与胜负判定
+  app.post('/arena/duel/submit', requireAuth, async (req, res) => {
+    const { phone } = req.auth;
+    const { opponentPhone, myScore, opponentScore } = req.body || {};
+    const opp = opponentPhone != null ? String(opponentPhone).trim() : '';
+    const my = Number(myScore);
+    const oppScore = Number(opponentScore);
+    if (opp === '') {
+      return res.status(400).json({ error: 'invalid_data', message: '需要对手手机号' });
+    }
+    try {
+      await pool.query(
+        `INSERT INTO arena_lan_duel_sessions (user_phone, opponent_phone, user_score, opponent_score)
+         VALUES ($1, $2, $3, $4)`,
+        [phone, opp, my, oppScore]
+      );
+      res.json({ message: '提交成功' });
+    } catch (err) {
+      console.error('[arena duel/submit]', err);
+      res.status(500).json({ error: 'server_error', message: '提交失败' });
+    }
+  });
+
+  // 局域网对战记录列表（最近挑战用）
+  app.get('/arena/duel/history', requireAuth, async (req, res) => {
+    const { phone } = req.auth;
+    const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
+    try {
+      const r = await pool.query(
+        `SELECT d.id, d.opponent_phone, d.user_score, d.opponent_score, d.created_at,
+                u.name AS opponent_name
+         FROM arena_lan_duel_sessions d
+         LEFT JOIN users u ON u.phone = d.opponent_phone
+         WHERE d.user_phone = $1
+         ORDER BY d.created_at DESC
+         LIMIT $2`,
+        [phone, limit]
+      );
+      const list = (r.rows || []).map((row) => {
+        const mySc = Number(row.user_score) ?? 0;
+        const oppSc = Number(row.opponent_score) ?? 0;
+        return {
+          id: row.id,
+          opponentPhone: row.opponent_phone ?? '',
+          opponentName: row.opponent_name ?? '对手',
+          myScore: mySc,
+          opponentScore: oppSc,
+          result: mySc > oppSc ? 'win' : 'lose',
+          createdAt: row.created_at,
+        };
+      });
+      res.json({ list });
+    } catch (err) {
+      console.error('[arena duel/history]', err);
+      res.status(500).json({ error: 'server_error', message: '获取对战记录失败' });
+    }
+  });
+
   // 单人挑战：做完所有题目后提交，才记录得分并写入挑战记录
   app.post('/arena/challenge/submit', requireAuth, async (req, res) => {
     const { phone } = req.auth;

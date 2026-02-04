@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../data/growth_data.dart';
 import '../../data/learning_data.dart';
 import '../../data/demo_data.dart';
 import '../../widgets/starry_background.dart';
@@ -541,6 +542,9 @@ class ContentCard extends StatelessWidget {
     return InkWell(
       borderRadius: BorderRadius.circular(22),
       onTap: () async {
+        // 打卡：学习一个新知识点、观看视频或图文
+        await GrowthDataRepository.setDailyTaskCompleted('school', true);
+        await GrowthDataRepository.setDailyTaskCompleted('video', true);
         if (item.url.isNotEmpty) {
           final uri = Uri.tryParse(item.url);
           if (uri != null && await canLaunchUrl(uri)) {
@@ -548,6 +552,7 @@ class ContentCard extends StatelessWidget {
             return;
           }
         }
+        if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(

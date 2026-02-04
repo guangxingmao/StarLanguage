@@ -217,9 +217,11 @@ class _StatItem extends StatelessWidget {
 
 /// 每日任务打卡卡片
 class DailyTasksCard extends StatelessWidget {
-  const DailyTasksCard({super.key, required this.tasks});
+  const DailyTasksCard({super.key, required this.tasks, this.onTaskTap});
 
   final List<DailyTask> tasks;
+  /// 点击某项任务时回调（用于跳转到学习/擂台/社群），null 则不响应点击
+  final void Function(DailyTask task)? onTaskTap;
 
   @override
   Widget build(BuildContext context) {
@@ -286,39 +288,47 @@ class DailyTasksCard extends StatelessWidget {
           ...tasks.map((task) {
             final done = task.completed;
             final icon = _iconForKey(task.iconKey);
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Row(
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: done ? const Color(0xFFFF9F1C) : const Color(0xFFF6F1E3),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
-                      icon,
-                      size: 20,
-                      color: done ? Colors.white : const Color(0xFF9A8F77),
+            final row = Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: done ? const Color(0xFFFF9F1C) : const Color(0xFFF6F1E3),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 20,
+                    color: done ? Colors.white : const Color(0xFF9A8F77),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    task.label,
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: done ? const Color(0xFF6F6B60) : const Color(0xFF2B2B2B),
+                      decoration: done ? TextDecoration.lineThrough : null,
+                      decorationColor: const Color(0xFF9A8F77),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      task.label,
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: done ? const Color(0xFF6F6B60) : const Color(0xFF2B2B2B),
-                        decoration: done ? TextDecoration.lineThrough : null,
-                        decorationColor: const Color(0xFF9A8F77),
-                      ),
-                    ),
-                  ),
-                  if (done) const Icon(Icons.check_circle_rounded, color: Color(0xFF2EC4B6), size: 22),
-                ],
-              ),
+                ),
+                if (done) const Icon(Icons.check_circle_rounded, color: Color(0xFF2EC4B6), size: 22),
+              ],
             );
+            if (onTaskTap != null) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: InkWell(
+                  onTap: () => onTaskTap!(task),
+                  borderRadius: BorderRadius.circular(10),
+                  child: row,
+                ),
+              );
+            }
+            return Padding(padding: const EdgeInsets.only(bottom: 12), child: row);
           }),
         ],
       ),
@@ -328,9 +338,11 @@ class DailyTasksCard extends StatelessWidget {
 
 /// 今日学习推荐卡片
 class TodayLearningCard extends StatelessWidget {
-  const TodayLearningCard({super.key, required this.data});
+  const TodayLearningCard({super.key, required this.data, this.onTap});
 
   final TodayLearningData data;
+  /// 点击时回调（如跳转到学习 Tab）；若为 null 则仅显示 SnackBar
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -338,9 +350,13 @@ class TodayLearningCard extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('去学习：${data.title}'), behavior: SnackBarBehavior.floating),
-          );
+          if (onTap != null) {
+            onTap!();
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('去学习：${data.title}'), behavior: SnackBarBehavior.floating),
+            );
+          }
         },
         borderRadius: BorderRadius.circular(22),
         child: Container(

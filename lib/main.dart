@@ -176,8 +176,12 @@ class _StarKnowShellState extends State<StarKnowShell> {
     }
   }
 
+  void _switchToTab(int index) {
+    if (mounted) setState(() => _index = index);
+  }
+
   List<Widget> get _pages => [
-    GrowthPage(selectedTabIndex: _index),
+    GrowthPage(selectedTabIndex: _index, onSwitchToTab: _switchToTab),
     CommunityPage(selectedTabIndex: _index),
     AssistantPage(),
     ArenaPage(

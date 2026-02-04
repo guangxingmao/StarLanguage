@@ -80,6 +80,42 @@ async function getDailyTaskCompletion(phone) {
   return completed;
 }
 
+/** 今日是否参与过擂台：单人挑战或局域网对战任一条即算完成（按 UTC 日期与 todayKey 一致） */
+async function getTodayArenaDone(phone) {
+  const r = await pool.query(
+    `SELECT 1 FROM arena_challenge_sessions
+     WHERE phone = $1 AND (created_at AT TIME ZONE 'UTC')::date = (now() AT TIME ZONE 'UTC')::date
+     LIMIT 1`,
+    [phone]
+  );
+  if (r.rows.length > 0) return true;
+  const r2 = await pool.query(
+    `SELECT 1 FROM arena_lan_duel_sessions
+     WHERE user_phone = $1 AND (created_at AT TIME ZONE 'UTC')::date = (now() AT TIME ZONE 'UTC')::date
+     LIMIT 1`,
+    [phone]
+  );
+  return r2.rows.length > 0;
+}
+
+/** 今日是否参与过社群讨论：发过话题或发过评论即算完成（按 UTC 日期） */
+async function getTodayForumDone(phone) {
+  const r = await pool.query(
+    `SELECT 1 FROM topics
+     WHERE author_phone = $1 AND (created_at AT TIME ZONE 'UTC')::date = (now() AT TIME ZONE 'UTC')::date
+     LIMIT 1`,
+    [phone]
+  );
+  if (r.rows.length > 0) return true;
+  const r2 = await pool.query(
+    `SELECT 1 FROM topic_comments
+     WHERE author_phone = $1 AND (created_at AT TIME ZONE 'UTC')::date = (now() AT TIME ZONE 'UTC')::date
+     LIMIT 1`,
+    [phone]
+  );
+  return r2.rows.length > 0;
+}
+
 function mergeTaskCompletion(completed, tasks) {
   if (!Object.keys(completed).length) return tasks.map((t) => ({ ...t }));
   return tasks.map((t) => ({
@@ -125,11 +161,15 @@ function routes(app) {
   app.get('/growth', requireAuth, async (req, res) => {
     try {
       const { phone } = req.auth;
-      const [reminderSetting, stats, completed] = await Promise.all([
+      const [reminderSetting, stats, completed, todayArena, todayForum] = await Promise.all([
         getReminder(phone),
         getStats(phone),
         getDailyTaskCompletion(phone),
+        getTodayArenaDone(phone),
+        getTodayForumDone(phone),
       ]);
+      if (todayArena) completed.arena = true;
+      if (todayForum) completed.forum = true;
       const dailyTasks = mergeTaskCompletion(completed, DAILY_TASK_TEMPLATE);
       const reminder = buildReminderPayload(reminderSetting, dailyTasks);
       const todayLearning = pickTodayLearning(phone);

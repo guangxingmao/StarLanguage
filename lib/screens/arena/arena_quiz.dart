@@ -75,6 +75,8 @@ class LanDuelPage extends StatefulWidget {
     required this.count,
     required this.isHost,
     required this.room,
+    this.opponentPhone,
+    this.opponentName,
   });
 
   final DuelConnection connection;
@@ -85,6 +87,9 @@ class LanDuelPage extends StatefulWidget {
   final int count;
   final bool isHost;
   final String? room;
+  /// 对手手机号（用于提交局域网对战记录）
+  final String? opponentPhone;
+  final String? opponentName;
 
   @override
   State<LanDuelPage> createState() => _LanDuelPageState();
@@ -252,6 +257,14 @@ class _LanDuelPageState extends State<LanDuelPage> {
         _send(finishPayload);
       }
       await ArenaPkRepository.submitScore(_score);
+      final oppPhone = widget.opponentPhone?.trim() ?? '';
+      if (oppPhone.isNotEmpty) {
+        await ArenaDuelRepository.submitDuelRecord(
+          opponentPhone: oppPhone,
+          myScore: _score,
+          opponentScore: _opponentScore,
+        );
+      }
       if (mounted) await ArenaStatsStore.syncFromServer();
       if (!mounted) return;
       if (_opponentTotal == 0) {
