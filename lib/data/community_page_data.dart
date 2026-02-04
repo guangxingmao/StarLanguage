@@ -429,6 +429,27 @@ class CommunityDataRepository {
       return [];
     }
   }
+
+  /// 本圈内「我对别人的评论」（我在别人话题下的评论，需登录）
+  static Future<List<ReceivedComment>> loadMyComments(String communityId) async {
+    final token = ProfileStore.authToken;
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    if (token == null || token.isEmpty) return [];
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/communities/$communityId/my-comments'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (res.statusCode != 200) return [];
+      final data = jsonDecode(res.body);
+      if (data is! List) return [];
+      return (data as List)
+          .map((e) => ReceivedComment.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
 }
 
 /// 别人在我的话题下的评论（用于「我的」- 别人给我的评论）

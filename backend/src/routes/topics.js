@@ -120,6 +120,43 @@ function getReceivedComments(app) {
   });
 }
 
+/** GET /communities/:id/my-comments — 本圈内「我对别人的评论」（我在别人话题下的评论，需登录） */
+function getMyComments(app) {
+  app.get('/communities/:id/my-comments', requireAuth, async (req, res) => {
+    const communityId = (req.params.id || '').trim();
+    const { phone } = req.auth;
+    if (!communityId) {
+      return res.status(400).json({ error: 'invalid_id', message: '社群 id 无效' });
+    }
+    try {
+      const r = await pool.query(
+        `SELECT tc.id AS comment_id, tc.topic_id, t.title AS topic_title,
+                tc.author_name AS author, tc.content, tc.reply_to_author, tc.created_at
+         FROM topic_comments tc
+         INNER JOIN topics t ON t.id = tc.topic_id AND t.community_id = $2 AND t.author_phone != $1
+         WHERE tc.author_phone = $1
+         ORDER BY tc.created_at DESC
+         LIMIT 50`,
+        [phone, communityId]
+      );
+      res.json(
+        r.rows.map((row) => ({
+          commentId: row.comment_id,
+          topicId: row.topic_id,
+          topicTitle: row.topic_title ?? '',
+          author: row.author ?? '',
+          content: row.content ?? '',
+          timeLabel: timeLabel(row.created_at),
+          replyToAuthor: row.reply_to_author ?? null,
+        }))
+      );
+    } catch (err) {
+      console.error('[topics my-comments]', err);
+      res.status(500).json({ error: 'server_error', message: '获取失败' });
+    }
+  });
+}
+
 /** GET /communities/:id/topics — 指定圈子下的所有话题；已登录时带 likedByMe */
 function listByCommunity(app) {
   app.get('/communities/:id/topics', optionalAuth, async (req, res) => {
@@ -634,6 +671,7 @@ function routes(app) {
   hotToday(app);
   getById(app);
   getReceivedComments(app);
+  getMyComments(app);
   listByCommunity(app);
   createTopic(app);
   updateTopic(app);
