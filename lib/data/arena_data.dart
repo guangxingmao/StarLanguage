@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import 'ai_proxy.dart';
+import 'demo_data.dart';
 import 'profile.dart';
 
 class ArenaStats {
@@ -118,45 +119,52 @@ class LeaderboardEntry {
     required this.rank,
     required this.name,
     required this.score,
+    this.isMe = false,
   });
 
   final int rank;
   final String name;
   final int score;
+  final bool isMe;
 
   factory LeaderboardEntry.fromJson(Map<String, dynamic> json) {
     return LeaderboardEntry(
       rank: (json['rank'] as num?)?.toInt() ?? 0,
       name: json['name'] as String? ?? '',
       score: (json['score'] as num?)?.toInt() ?? 0,
+      isMe: json['isMe'] as bool? ?? false,
     );
   }
 
-  Map<String, dynamic> toJson() => {'rank': rank, 'name': name, 'score': score};
+  Map<String, dynamic> toJson() => {'rank': rank, 'name': name, 'score': score, 'isMe': isMe};
 
-  LeaderboardEntry copyWith({int? rank, String? name, int? score}) {
+  LeaderboardEntry copyWith({int? rank, String? name, int? score, bool? isMe}) {
     return LeaderboardEntry(
       rank: rank ?? this.rank,
       name: name ?? this.name,
       score: score ?? this.score,
+      isMe: isMe ?? this.isMe,
     );
   }
 }
 
-/// 擂台页假数据（可由后端接口填充）
+/// 擂台页数据（来自后端接口，失败时用 fallback）
 class ArenaPageData {
   const ArenaPageData({
     required this.pkLeaderboard,
     required this.personalLeaderboardEntries,
     required this.zoneLeaderboardTemplate,
+    this.zoneLeaders = const {},
   });
 
-  /// 在线 PK 排行（固定 5 条）
+  /// 在线 PK 排行（与个人积分同源，按 total_score）
   final List<LeaderboardEntry> pkLeaderboard;
-  /// 个人积分排行中的假用户（不含「你」），与当前用户分数合并后排序
+  /// 个人积分排行（与 pk 同源，前端会合并「你」并重排）
   final List<LeaderboardEntry> personalLeaderboardEntries;
-  /// 分区榜模板（不含「你」），与 yourBest 合并后排序
+  /// 分区榜模板（接口无数据时 fallback）
   final List<LeaderboardEntry> zoneLeaderboardTemplate;
+  /// 分区榜按主题的榜单（topic -> list），有则优先用
+  final Map<String, List<LeaderboardEntry>> zoneLeaders;
 
   factory ArenaPageData.fromJson(Map<String, dynamic> json) {
     return ArenaPageData(
@@ -169,6 +177,7 @@ class ArenaPageData {
       zoneLeaderboardTemplate: (json['zoneLeaderboardTemplate'] as List<dynamic>? ?? [])
           .map((e) => LeaderboardEntry.fromJson(e as Map<String, dynamic>))
           .toList(),
+      zoneLeaders: const {},
     );
   }
 
@@ -204,10 +213,59 @@ class ArenaPageData {
   }
 }
 
-/// 擂台页数据仓库：当前返回假数据，之后可改为从后端接口加载
+/// 擂台页数据仓库：从后端获取排行榜，失败则用 fallback
 class ArenaDataRepository {
   static Future<ArenaPageData> load() async {
-    return Future.value(ArenaPageData.fallback());
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    final token = ProfileStore.authToken;
+    final headers = <String, String>{};
+    if (token != null && token.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+    try {
+      final scoreRes = await http.get(
+        Uri.parse('$baseUrl/arena/leaderboard/score?limit=10'),
+        headers: headers,
+      );
+      if (scoreRes.statusCode != 200) return ArenaPageData.fallback();
+      final scoreData = jsonDecode(scoreRes.body) as Map<String, dynamic>?;
+      final listRaw = scoreData?['list'];
+      if (listRaw is! List) return ArenaPageData.fallback();
+      final scoreList = listRaw
+          .map((e) => LeaderboardEntry.fromJson(e as Map<String, dynamic>))
+          .toList();
+      final pkList = scoreList.take(5).toList();
+      final personalList = List<LeaderboardEntry>.from(scoreList);
+
+      final topics = ['历史', '篮球', '科学', '计算机'];
+      final zoneLeaders = <String, List<LeaderboardEntry>>{};
+      for (final topic in topics) {
+        try {
+          final zoneRes = await http.get(
+            Uri.parse('$baseUrl/arena/leaderboard/zone?topic=${Uri.encodeComponent(topic)}&limit=10'),
+            headers: headers,
+          );
+          if (zoneRes.statusCode == 200) {
+            final zoneData = jsonDecode(zoneRes.body) as Map<String, dynamic>?;
+            final zList = zoneData?['list'];
+            if (zList is List) {
+              zoneLeaders[topic] = zList
+                  .map((e) => LeaderboardEntry.fromJson(e as Map<String, dynamic>))
+                  .toList();
+            }
+          }
+        } catch (_) {}
+      }
+
+      return ArenaPageData(
+        pkLeaderboard: pkList,
+        personalLeaderboardEntries: personalList,
+        zoneLeaderboardTemplate: ArenaPageData.fallback().zoneLeaderboardTemplate,
+        zoneLeaders: zoneLeaders,
+      );
+    } catch (_) {
+      return ArenaPageData.fallback();
+    }
   }
 }
 
@@ -248,3 +306,25 @@ class ArenaStatsRepository {
 }
 
 final Future<ArenaPageData> arenaPageDataFuture = ArenaDataRepository.load();
+
+/// 擂台题库：从 GET /arena/questions 拉取，失败或空则返回空列表
+class ArenaQuestionsRepository {
+  static Future<List<Question>> load({String? topic}) async {
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    try {
+      final uri = topic != null && topic.isNotEmpty && topic != '全部'
+          ? Uri.parse('$baseUrl/arena/questions?topic=${Uri.encodeComponent(topic)}')
+          : Uri.parse('$baseUrl/arena/questions');
+      final res = await http.get(uri);
+      if (res.statusCode != 200) return [];
+      final data = jsonDecode(res.body) as Map<String, dynamic>?;
+      final list = data?['questions'];
+      if (list is! List) return [];
+      return list
+          .map((e) => Question.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+}

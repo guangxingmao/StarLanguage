@@ -23,17 +23,17 @@ class _ArenaPageState extends State<ArenaPage> {
 
   List<LeaderboardEntry> _buildPersonalLeaderboard(
     int yourScore,
-    List<LeaderboardEntry> template,
+    List<LeaderboardEntry> fromApi,
   ) {
-    final entries = [
-      LeaderboardEntry(rank: 0, name: '你', score: yourScore),
-      ...template.map((e) => LeaderboardEntry(rank: 0, name: e.name, score: e.score)),
-    ];
+    final hasMe = fromApi.any((e) => e.isMe);
+    final entries = hasMe
+        ? fromApi.map((e) => e.isMe ? e.copyWith(name: '你', score: yourScore) : e).toList()
+        : [
+            LeaderboardEntry(rank: 0, name: '你', score: yourScore, isMe: true),
+            ...fromApi.map((e) => e.copyWith(rank: 0)),
+          ];
     entries.sort((a, b) => b.score.compareTo(a.score));
-    for (var i = 0; i < entries.length; i++) {
-      entries[i] = entries[i].copyWith(rank: i + 1);
-    }
-    return entries.take(5).toList();
+    return entries.asMap().entries.take(5).map((e) => e.value.copyWith(rank: e.key + 1)).toList();
   }
 
   @override
@@ -43,7 +43,11 @@ class _ArenaPageState extends State<ArenaPage> {
         const StarryBackground(),
         SafeArea(
           child: FutureBuilder<List<dynamic>>(
-            future: Future.wait([demoDataFuture, arenaPageDataFuture]),
+            future: Future.wait([
+              demoDataFuture,
+              arenaPageDataFuture,
+              ArenaQuestionsRepository.load(),
+            ]),
             builder: (context, snapshot) {
               final data = snapshot.hasData
                   ? (snapshot.data![0] as DemoData)
@@ -51,6 +55,18 @@ class _ArenaPageState extends State<ArenaPage> {
               final arenaData = snapshot.hasData
                   ? (snapshot.data![1] as ArenaPageData)
                   : ArenaPageData.fallback();
+              final apiQuestions = snapshot.hasData && snapshot.data!.length > 2
+                  ? (snapshot.data![2] as List<Question>)
+                  : <Question>[];
+              final quizData = apiQuestions.isNotEmpty
+                  ? DemoData(
+                      topics: data.topics,
+                      contents: data.contents,
+                      questions: apiQuestions,
+                      achievements: data.achievements,
+                      communityPosts: data.communityPosts,
+                    )
+                  : data;
               final topics = ['全部', ...data.topics.map((t) => t.name)];
               final subTopics = _subTopicsFor(data, _selectedTopic);
               return ValueListenableBuilder<ArenaStats>(
@@ -59,14 +75,38 @@ class _ArenaPageState extends State<ArenaPage> {
                   return ListView(
                     padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
                     children: [
-                      Text('知识擂台', style: Theme.of(context).textTheme.headlineLarge),
-                      const SizedBox(height: 8),
-                      const Text('快问快答，看谁最闪'),
-                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('知识擂台', style: Theme.of(context).textTheme.headlineLarge),
+                                const SizedBox(height: 4),
+                                const Text('快问快答，看谁最闪', style: TextStyle(color: Color(0xFF6F6B60))),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => _ArenaMyRankPage(
+                                  pkList: arenaData.pkLeaderboard,
+                                  personalList: _buildPersonalLeaderboard(stats.totalScore, arenaData.personalLeaderboardEntries),
+                                ),
+                              ),
+                            ),
+                            icon: const Icon(Icons.leaderboard_rounded),
+                            tooltip: '我的排名',
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
                       SizedBox(
                         height: 44,
                         child: ListView(
                           scrollDirection: Axis.horizontal,
+                          physics: const BouncingScrollPhysics(),
                           children: topics.map((topic) {
                             final active = topic == _selectedTopic;
                             return GestureDetector(
@@ -100,6 +140,7 @@ class _ArenaPageState extends State<ArenaPage> {
                           height: 38,
                           child: ListView(
                             scrollDirection: Axis.horizontal,
+                            physics: const BouncingScrollPhysics(),
                             children: subTopics.map((sub) {
                               final active = sub == _selectedSubtopic;
                               return GestureDetector(
@@ -129,13 +170,13 @@ class _ArenaPageState extends State<ArenaPage> {
                                 builder: (_) => QuizPage(
                                   topic: _selectedTopic,
                                   subtopic: _selectedSubtopic,
-                                  data: data,
+                                  data: quizData,
                                 ),
                               ),
                             );
                           },
                           onDuel: () {
-                            _openLanDuelSheet(context, data);
+                            _openLanDuelSheet(context, quizData);
                           },
                         ),
                       ),
@@ -169,6 +210,7 @@ class _ArenaPageState extends State<ArenaPage> {
                           topics: data.topics.map((t) => t.name).toList(),
                           stats: stats,
                           zoneLeaderboardTemplate: arenaData.zoneLeaderboardTemplate,
+                          zoneLeaders: arenaData.zoneLeaders,
                         ),
                       ),
                     ],
@@ -197,6 +239,130 @@ class _ArenaPageState extends State<ArenaPage> {
         topic: _selectedTopic,
         subtopic: _selectedSubtopic,
         data: data,
+      ),
+    );
+  }
+}
+
+class _ArenaMyRankPage extends StatelessWidget {
+  const _ArenaMyRankPage({
+    required this.pkList,
+    required this.personalList,
+  });
+
+  final List<LeaderboardEntry> pkList;
+  final List<LeaderboardEntry> personalList;
+
+  int _myRank(List<LeaderboardEntry> list) {
+    final idx = list.indexWhere((e) => e.isMe || e.name == '你');
+    return idx >= 0 ? list[idx].rank : 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pkRank = _myRank(pkList);
+    final personalRank = _myRank(personalList);
+    return Scaffold(
+      body: Stack(
+        children: [
+          const StarryBackground(),
+          SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.arrow_back_rounded),
+                    ),
+                    const SizedBox(width: 8),
+                    Text('我的排名', style: Theme.of(context).textTheme.headlineSmall),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _RankTile(
+                        title: '在线 PK 排行',
+                        rank: pkRank,
+                        label: pkRank > 0 ? '第 $pkRank 名' : '暂未上榜',
+                      ),
+                      const SizedBox(height: 16),
+                      _RankTile(
+                        title: '个人积分排行',
+                        rank: personalRank,
+                        label: personalRank > 0 ? '第 $personalRank 名' : '暂未上榜',
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RankTile extends StatelessWidget {
+  const _RankTile({required this.title, required this.rank, required this.label});
+
+  final String title;
+  final int rank;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFFFD166)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: rank > 0 ? const Color(0xFFFF9F1C).withOpacity(0.2) : const Color(0xFFE0E0E0).withOpacity(0.5),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(
+              rank > 0 ? Icons.emoji_events_rounded : Icons.leaderboard_outlined,
+              color: rank > 0 ? const Color(0xFFB35C00) : const Color(0xFF9E9E9E),
+              size: 28,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 4),
+                Text(label, style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: rank > 0 ? const Color(0xFFB35C00) : const Color(0xFF6F6B60),
+                )),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -620,6 +786,13 @@ class LeaderboardCard extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: const Color(0xFFFFD166)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -627,35 +800,59 @@ class LeaderboardCard extends StatelessWidget {
           Text(title, style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 10),
           ...entries.map(
-            (entry) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Row(
-                children: [
-                  Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFF1D0),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Center(
-                      child: Text(
-                        '${entry.rank}',
-                        style: const TextStyle(fontWeight: FontWeight.w700),
+            (entry) {
+              final isCurrentUser = entry.isMe || entry.name == '你';
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isCurrentUser ? const Color(0xFFFFF8E8) : null,
+                    borderRadius: BorderRadius.circular(14),
+                    border: isCurrentUser ? Border.all(color: const Color(0xFFFFD166).withOpacity(0.6)) : null,
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: isCurrentUser ? const Color(0xFFFF9F1C).withOpacity(0.2) : const Color(0xFFFFF1D0),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Center(
+                          child: Text(
+                            '${entry.rank}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: isCurrentUser ? const Color(0xFFB35C00) : null,
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          entry.name,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontWeight: isCurrentUser ? FontWeight.w600 : null,
+                            color: isCurrentUser ? const Color(0xFF8B6914) : null,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        '${entry.score}',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: isCurrentUser ? const Color(0xFFB35C00) : null,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      entry.name,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  Text('${entry.score}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                ],
-              ),
-            ),
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -669,11 +866,13 @@ class ZoneLeaderboardRow extends StatelessWidget {
     required this.topics,
     required this.stats,
     required this.zoneLeaderboardTemplate,
+    this.zoneLeaders = const {},
   });
 
   final List<String> topics;
   final ArenaStats stats;
   final List<LeaderboardEntry> zoneLeaderboardTemplate;
+  final Map<String, List<LeaderboardEntry>> zoneLeaders;
 
   @override
   Widget build(BuildContext context) {
@@ -712,33 +911,44 @@ class ZoneLeaderboardRow extends StatelessWidget {
       '计算机': const Color(0xFF2EC4B6),
       '篮球': const Color(0xFFFF9F1C),
       '动物': const Color(0xFF6DD3CE),
+      '科学': const Color(0xFFB784F8),
     };
     return topics.take(4).map((topic) {
       final color = palette[topic] ?? const Color(0xFFFFC857);
       final best = stats.topicBest[topic] ?? 0;
-      final detailEntries = _buildZoneLeaderboard(best);
+      final detailEntries = _buildZoneLeaderboard(topic, best);
+      final first = detailEntries.isNotEmpty ? detailEntries.first : null;
       return _ZoneEntry(
         topic: topic,
-        leader: detailEntries.first.name,
-        score: detailEntries.first.score,
+        leader: first?.name ?? '—',
+        score: first?.score ?? 0,
         color: color,
         detailEntries: detailEntries,
       );
     }).toList();
   }
 
-  List<LeaderboardEntry> _buildZoneLeaderboard(int yourBest) {
+  List<LeaderboardEntry> _buildZoneLeaderboard(String topic, int yourBest) {
+    final fromApi = zoneLeaders[topic];
+    if (fromApi != null && fromApi.isNotEmpty) {
+      final hasMe = fromApi.any((e) => e.isMe);
+      final merged = hasMe
+          ? fromApi.map((e) => e.isMe ? e.copyWith(name: '你', score: yourBest) : e).toList()
+          : [
+              LeaderboardEntry(rank: 0, name: '你', score: yourBest, isMe: true),
+              ...fromApi.map((e) => e.copyWith(rank: 0)),
+            ];
+      merged.sort((a, b) => b.score.compareTo(a.score));
+      return merged.asMap().entries.take(10).map((e) => e.value.copyWith(rank: e.key + 1)).toList();
+    }
     final base = List<LeaderboardEntry>.from(
       zoneLeaderboardTemplate.map((e) => LeaderboardEntry(rank: 0, name: e.name, score: e.score)),
     );
     if (yourBest > 0) {
-      base.add(LeaderboardEntry(rank: 0, name: '你', score: yourBest));
+      base.add(LeaderboardEntry(rank: 0, name: '你', score: yourBest, isMe: true));
     }
     base.sort((a, b) => b.score.compareTo(a.score));
-    for (var i = 0; i < base.length; i++) {
-      base[i] = base[i].copyWith(rank: i + 1);
-    }
-    return base.take(10).toList();
+    return base.asMap().entries.take(10).map((e) => e.value.copyWith(rank: e.key + 1)).toList();
   }
 }
 
@@ -901,12 +1111,15 @@ class _ZoneLeaderboardDetailPageState extends State<ZoneLeaderboardDetailPage> {
                       separatorBuilder: (_, __) => const SizedBox(height: 10),
                       itemBuilder: (context, index) {
                         final entry = _currentList()[index];
+                        final isCurrentUser = entry.isMe || entry.name == '你';
                         return Container(
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: isCurrentUser ? const Color(0xFFFFF8E8) : Colors.white,
                             borderRadius: BorderRadius.circular(18),
-                            border: Border.all(color: const Color(0xFFFFD166)),
+                            border: Border.all(
+                              color: isCurrentUser ? const Color(0xFFFFD166).withOpacity(0.8) : const Color(0xFFFFD166),
+                            ),
                           ),
                           child: Row(
                             children: [
@@ -914,13 +1127,16 @@ class _ZoneLeaderboardDetailPageState extends State<ZoneLeaderboardDetailPage> {
                                 width: 32,
                                 height: 32,
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFFFF1D0),
+                                  color: isCurrentUser ? const Color(0xFFFF9F1C).withOpacity(0.2) : const Color(0xFFFFF1D0),
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: Center(
                                   child: Text(
                                     '${entry.rank}',
-                                    style: const TextStyle(fontWeight: FontWeight.w700),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      color: isCurrentUser ? const Color(0xFFB35C00) : null,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -929,9 +1145,19 @@ class _ZoneLeaderboardDetailPageState extends State<ZoneLeaderboardDetailPage> {
                                 child: Text(
                                   entry.name,
                                   overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontWeight: isCurrentUser ? FontWeight.w600 : null,
+                                    color: isCurrentUser ? const Color(0xFF8B6914) : null,
+                                  ),
                                 ),
                               ),
-                              Text('${entry.score}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                              Text(
+                                '${entry.score}',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: isCurrentUser ? const Color(0xFFB35C00) : null,
+                                ),
+                              ),
                             ],
                           ),
                         );

@@ -49,6 +49,10 @@ services:
       - ./backend/sql/015_users_seed.sql:/docker-entrypoint-initdb.d/015_users_seed.sql:ro
       - ./backend/sql/016_fake_data_full_seed.sql:/docker-entrypoint-initdb.d/016_fake_data_full_seed.sql:ro
       - ./backend/sql/017_community_topics_seed.sql:/docker-entrypoint-initdb.d/017_community_topics_seed.sql:ro
+      - ./backend/sql/019_arena_questions_schema.sql:/docker-entrypoint-initdb.d/019_arena_questions_schema.sql:ro
+      - ./backend/sql/020_arena_questions_seed_100.sql:/docker-entrypoint-initdb.d/020_arena_questions_seed_100.sql:ro
+      - ./backend/sql/021_arena_questions_communities_seed.sql:/docker-entrypoint-initdb.d/021_arena_questions_communities_seed.sql:ro
+      - ./backend/sql/022_arena_topic_best_seed.sql:/docker-entrypoint-initdb.d/022_arena_topic_best_seed.sql:ro
     ports:
       - "${POSTGRES_PORT:-5433}:5432"
     healthcheck:
