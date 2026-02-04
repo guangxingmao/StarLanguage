@@ -17,6 +17,7 @@ import 'data/profile.dart';
 import 'data/demo_data.dart';
 import 'data/community_data.dart';
 import 'data/ai_proxy.dart';
+import 'data/assistant_route.dart';
 import 'screens/arena/arena_page.dart';
 import 'screens/auth/auth_page.dart';
 import 'screens/community/community_page.dart';
@@ -156,6 +157,24 @@ class StarKnowShell extends StatefulWidget {
 class _StarKnowShellState extends State<StarKnowShell> {
   int _index = 0;
   static const int _arenaTabIndex = 3;
+
+  @override
+  void initState() {
+    super.initState();
+    assistantInitialQuestion.addListener(_onAssistantInitialQuestion);
+  }
+
+  @override
+  void dispose() {
+    assistantInitialQuestion.removeListener(_onAssistantInitialQuestion);
+    super.dispose();
+  }
+
+  void _onAssistantInitialQuestion() {
+    if (assistantInitialQuestion.value != null && mounted) {
+      setState(() => _index = 2);
+    }
+  }
 
   List<Widget> get _pages => [
     GrowthPage(selectedTabIndex: _index),
@@ -388,10 +407,26 @@ class _AssistantPageState extends State<AssistantPage> {
   bool _sending = false;
 
   @override
+  void initState() {
+    super.initState();
+    assistantInitialQuestion.addListener(_fillComposerFromRoute);
+  }
+
+  @override
   void dispose() {
+    assistantInitialQuestion.removeListener(_fillComposerFromRoute);
     _composerController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _fillComposerFromRoute() {
+    final q = assistantInitialQuestion.value;
+    if (q != null && q.isNotEmpty) {
+      assistantInitialQuestion.value = null;
+      _composerController.text = q;
+      if (mounted) setState(() {});
+    }
   }
 
   Future<void> _scrollToBottom() async {

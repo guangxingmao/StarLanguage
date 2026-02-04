@@ -99,6 +99,7 @@ class _LanDuelPageState extends State<LanDuelPage> {
   int _score = 0;
   int _opponentScore = 0;
   int _correct = 0;
+  late final DateTime _quizStartTime;
   int _remaining = _secondsPerQuestion;
   bool _answered = false;
   String? _selected;
@@ -108,6 +109,7 @@ class _LanDuelPageState extends State<LanDuelPage> {
   void initState() {
     super.initState();
     _questions = _buildQuestions();
+    _quizStartTime = DateTime.now();
     _listen();
     _startTimer();
     if (!widget.isHost) {
@@ -198,17 +200,21 @@ class _LanDuelPageState extends State<LanDuelPage> {
     });
   }
 
-  void _next() {
+  void _next() async {
     final done = _index + 1 >= _questions.length;
     if (done) {
+      final totalSeconds = DateTime.now().difference(_quizStartTime).inSeconds;
       _send({'type': 'finish', 'score': _score});
+      await ArenaPkRepository.submitScore(_score);
+      if (mounted) await ArenaStatsStore.syncFromServer();
+      if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (_) => QuizResultPage(
             score: _score,
             total: _questions.length,
             correct: _correct,
-            timeUsed: (_questions.length * _secondsPerQuestion) - _remaining,
+            timeUsed: totalSeconds,
             maxStreak: 0,
             accuracyBonus: 0,
           ),
@@ -395,7 +401,7 @@ class _DuelQuizPageState extends State<DuelQuizPage> {
   int _correct = 0;
   int _currentStreak = 0;
   int _maxStreak = 0;
-  int _elapsedSeconds = 0;
+  late final DateTime _quizStartTime;
   int _remaining = _secondsPerQuestion;
   bool _answered = false;
   bool _aiAnswered = false;
@@ -415,6 +421,7 @@ class _DuelQuizPageState extends State<DuelQuizPage> {
     list.shuffle(Random());
     final count = min(_total, list.length);
     _questions = list.take(count).toList();
+    _quizStartTime = DateTime.now();
     _startTimer();
   }
 
@@ -468,7 +475,6 @@ class _DuelQuizPageState extends State<DuelQuizPage> {
       _answered = true;
       _selected = null;
       _currentStreak = 0;
-      _elapsedSeconds += _secondsPerQuestion;
     });
     if (_autoAdvanceScheduled) return;
     _autoAdvanceScheduled = true;
@@ -482,12 +488,10 @@ class _DuelQuizPageState extends State<DuelQuizPage> {
   void _answer(String option) {
     if (_answered) return;
     final correct = _questions[_index].answer;
-    final used = _secondsPerQuestion - _remaining;
     _timer?.cancel();
     setState(() {
       _selected = option;
       _answered = true;
-      _elapsedSeconds += used;
       if (option.startsWith(correct)) {
         _score += 10 + _remaining;
         _correct += 1;
@@ -508,23 +512,18 @@ class _DuelQuizPageState extends State<DuelQuizPage> {
     if (_index + 1 >= _questions.length) {
       _timer?.cancel();
       _aiTimer?.cancel();
+      final totalSeconds = DateTime.now().difference(_quizStartTime).inSeconds;
       final accuracy = _questions.isEmpty ? 0.0 : _correct / _questions.length;
       final bonus = accuracy >= 0.9 ? 30 : accuracy >= 0.8 ? 20 : accuracy >= 0.6 ? 10 : 0;
       final finalScore = _score + bonus;
-      ArenaStatsStore.submit(
-        score: finalScore,
-        correct: _correct,
-        topic: widget.topic,
-        maxStreak: _maxStreak,
-        accuracy: accuracy,
-      );
+      // 人机对战不写入个人积分与 PK 排行，仅展示结果
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (_) => QuizResultPage(
             score: finalScore,
             total: _questions.length,
             correct: _correct,
-            timeUsed: _elapsedSeconds,
+            timeUsed: totalSeconds,
             maxStreak: _maxStreak,
             accuracyBonus: bonus,
           ),
@@ -671,11 +670,13 @@ class _QuizPageState extends State<QuizPage> {
   int _currentStreak = 0;
   int _maxStreak = 0;
   int _accuracyBonus = 0;
-  int _elapsedSeconds = 0;
+  late final DateTime _quizStartTime;
   int _remaining = _secondsPerQuestion;
   bool _answered = false;
   bool _autoAdvanceScheduled = false;
   String? _selected;
+  /// 每题作答记录，仅在完成全部题目后随提交一起上报
+  final List<Map<String, dynamic>> _answerRecords = [];
 
   @override
   void initState() {
@@ -690,6 +691,7 @@ class _QuizPageState extends State<QuizPage> {
     list.shuffle(Random());
     final count = min(_total, list.length);
     _questions = list.take(count).toList();
+    _quizStartTime = DateTime.now();
     _startTimer();
   }
 
@@ -716,11 +718,18 @@ class _QuizPageState extends State<QuizPage> {
 
   void _timeout() {
     if (_answered) return;
+    final q = _questions[_index];
+    _answerRecords.add({
+      'questionId': q.id,
+      'title': q.title,
+      'userChoice': '',
+      'correctAnswer': q.answer,
+      'isCorrect': false,
+    });
     setState(() {
       _answered = true;
       _selected = null;
       _currentStreak = 0;
-      _elapsedSeconds += _secondsPerQuestion;
     });
     if (_autoAdvanceScheduled) return;
     _autoAdvanceScheduled = true;
@@ -733,14 +742,21 @@ class _QuizPageState extends State<QuizPage> {
 
   void _answer(String option) {
     if (_answered) return;
-    final correct = _questions[_index].answer;
-    final used = _secondsPerQuestion - _remaining;
+    final q = _questions[_index];
+    final correct = q.answer;
+    final isCorrect = option.startsWith(correct);
+    _answerRecords.add({
+      'questionId': q.id,
+      'title': q.title,
+      'userChoice': option,
+      'correctAnswer': correct,
+      'isCorrect': isCorrect,
+    });
     _timer?.cancel();
     setState(() {
       _selected = option;
       _answered = true;
-      _elapsedSeconds += used;
-      if (option.startsWith(correct)) {
+      if (isCorrect) {
         _score += 10 + _remaining;
         _correct += 1;
         _currentStreak += 1;
@@ -756,9 +772,10 @@ class _QuizPageState extends State<QuizPage> {
     });
   }
 
-  void _next() {
+  Future<void> _next() async {
     if (_index + 1 >= _questions.length) {
       _timer?.cancel();
+      final totalSeconds = DateTime.now().difference(_quizStartTime).inSeconds;
       final accuracy = _questions.isEmpty ? 0.0 : _correct / _questions.length;
       _accuracyBonus = accuracy >= 0.9
           ? 30
@@ -768,20 +785,42 @@ class _QuizPageState extends State<QuizPage> {
                   ? 10
                   : 0;
       final finalScore = _score + _accuracyBonus;
-      ArenaStatsStore.submit(
-        score: finalScore,
-        correct: _correct,
+      // 仅在做完所有题目后提交到后端并记录得分
+      final res = await ArenaChallengeRepository.submitChallenge(
         topic: widget.topic,
+        subtopic: widget.subtopic,
+        totalQuestions: _questions.length,
+        correctCount: _correct,
+        score: finalScore,
         maxStreak: _maxStreak,
-        accuracy: accuracy,
+        answers: _answerRecords,
       );
+      if (mounted && res != null) {
+        ArenaStatsStore.submit(
+          score: finalScore,
+          correct: _correct,
+          topic: widget.topic,
+          maxStreak: _maxStreak,
+          accuracy: accuracy,
+        );
+      } else if (mounted) {
+        // 提交失败仍更新本地统计，避免用户进度丢失
+        ArenaStatsStore.submit(
+          score: finalScore,
+          correct: _correct,
+          topic: widget.topic,
+          maxStreak: _maxStreak,
+          accuracy: accuracy,
+        );
+      }
+      if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (_) => QuizResultPage(
             score: finalScore,
             total: _questions.length,
             correct: _correct,
-            timeUsed: _elapsedSeconds,
+            timeUsed: totalSeconds,
             maxStreak: _maxStreak,
             accuracyBonus: _accuracyBonus,
           ),
@@ -939,10 +978,33 @@ class QuizResultPage extends StatefulWidget {
   State<QuizResultPage> createState() => _QuizResultPageState();
 }
 
-class _QuizResultPageState extends State<QuizResultPage> {
+class _QuizResultPageState extends State<QuizResultPage> with SingleTickerProviderStateMixin {
+  static const _space8 = 8.0;
+  static const _space16 = 16.0;
+  static const _space24 = 24.0;
+  static const _space32 = 32.0;
+  static const _radiusCard = 24.0;
+  static const _radiusBtn = 16.0;
+
+  late final AnimationController _stagger;
+  late final List<Animation<double>> _reveals;
+
   @override
   void initState() {
     super.initState();
+    _stagger = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 520),
+    );
+    _reveals = List.generate(6, (i) {
+      final start = (i * 0.08).clamp(0.0, 1.0);
+      final end = ((i + 1) * 0.12 + 0.2).clamp(0.0, 1.0);
+      return CurvedAnimation(
+        parent: _stagger,
+        curve: Interval(start, end, curve: Curves.easeOutCubic),
+      );
+    });
+    _stagger.forward();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final newlyUnlocked = ArenaStatsStore.consumeNewBadges();
       if (newlyUnlocked.isEmpty) return;
@@ -955,7 +1017,23 @@ class _QuizResultPageState extends State<QuizResultPage> {
   }
 
   @override
+  void dispose() {
+    _stagger.dispose();
+    super.dispose();
+  }
+
+  String _evaluationText() {
+    if (widget.total == 0) return '完成即胜利～';
+    final pct = widget.correct / widget.total;
+    if (pct >= 0.95) return '观察大师！几乎全对～';
+    if (pct >= 0.8) return '很稳，离星光更近一步～';
+    if (pct >= 0.6) return '继续加油，多练几遍会更稳～';
+    return '再试一次，你一定可以～';
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final accuracy = widget.total > 0 ? (widget.correct / widget.total * 100).round() : 0;
     return Scaffold(
       body: Stack(
         children: [
@@ -966,58 +1044,70 @@ class _QuizResultPageState extends State<QuizResultPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('成绩单', style: Theme.of(context).textTheme.headlineLarge),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: const Color(0xFFFFD166)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('总分', style: Theme.of(context).textTheme.titleMedium),
-                        const SizedBox(height: 8),
-                        Text('${widget.score}', style: Theme.of(context).textTheme.displaySmall),
-                        const SizedBox(height: 10),
-                        Text('正确题数：${widget.correct}/${widget.total}'),
-                        const SizedBox(height: 6),
-                        Text('用时：${widget.timeUsed}s'),
-                        const SizedBox(height: 6),
-                        Text('正确率：${(widget.correct / widget.total * 100).toStringAsFixed(0)}%'),
-                        const SizedBox(height: 6),
-                        Text('最高连击：${widget.maxStreak}'),
-                        const SizedBox(height: 6),
-                        Text('准确率加分：+${widget.accuracyBonus}'),
-                      ],
+                  AnimatedBuilder(
+                    animation: _stagger,
+                    builder: (_, __) => Opacity(
+                      opacity: _reveals[0].value,
+                      child: Transform.translate(
+                        offset: Offset(0, 8 * (1 - _reveals[0].value)),
+                        child: Text(
+                          '成绩单',
+                          style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(22),
+                  const SizedBox(height: _space24),
+                  AnimatedBuilder(
+                    animation: _stagger,
+                    builder: (_, __) => Opacity(
+                      opacity: _reveals[1].value,
+                      child: Transform.translate(
+                        offset: Offset(0, 12 * (1 - _reveals[1].value)),
+                        child: _ScoreHeroCard(score: widget.score),
+                      ),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        Text('本次评价', style: TextStyle(fontWeight: FontWeight.w700)),
-                        SizedBox(height: 8),
-                        Text('继续加油，离星光更近一步～'),
-                      ],
+                  ),
+                  const SizedBox(height: _space24),
+                  AnimatedBuilder(
+                    animation: _stagger,
+                    builder: (_, __) => Opacity(
+                      opacity: _reveals[2].value,
+                      child: Transform.translate(
+                        offset: Offset(0, 10 * (1 - _reveals[2].value)),
+                        child: _StatsGrid(
+                          correct: widget.correct,
+                          total: widget.total,
+                          timeUsed: widget.timeUsed,
+                          accuracy: accuracy,
+                          maxStreak: widget.maxStreak,
+                          accuracyBonus: widget.accuracyBonus,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: _space24),
+                  AnimatedBuilder(
+                    animation: _stagger,
+                    builder: (_, __) => Opacity(
+                      opacity: _reveals[3].value,
+                      child: Transform.translate(
+                        offset: Offset(0, 8 * (1 - _reveals[3].value)),
+                        child: _EvaluationCard(message: _evaluationText()),
+                      ),
                     ),
                   ),
                   const Spacer(),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                      },
-                      child: const Text('返回擂台'),
+                  AnimatedBuilder(
+                    animation: _stagger,
+                    builder: (_, __) => Opacity(
+                      opacity: _reveals[5].value,
+                      child: _BackButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
                     ),
                   ),
                 ],
@@ -1025,6 +1115,261 @@ class _QuizResultPageState extends State<QuizResultPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ScoreHeroCard extends StatelessWidget {
+  const _ScoreHeroCard({required this.score});
+
+  final int score;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(_QuizResultPageState._radiusCard),
+        border: Border.all(color: const Color(0xFFFFD166), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFFF9F1C).withOpacity(0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '总分',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              color: const Color(0xFF6F6B60),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '$score',
+            style: Theme.of(context).textTheme.displaySmall?.copyWith(
+              color: const Color(0xFFB35C00),
+              fontWeight: FontWeight.w800,
+              letterSpacing: -1,
+              height: 1.1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatsGrid extends StatelessWidget {
+  const _StatsGrid({
+    required this.correct,
+    required this.total,
+    required this.timeUsed,
+    required this.accuracy,
+    required this.maxStreak,
+    required this.accuracyBonus,
+  });
+
+  final int correct;
+  final int total;
+  final int timeUsed;
+  final int accuracy;
+  final int maxStreak;
+  final int accuracyBonus;
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = const Color(0xFF6F6B60);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(_QuizResultPageState._radiusCard),
+        border: Border.all(color: const Color(0xFFFFD166).withOpacity(0.8)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '答题明细',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              color: muted,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _StatItem(label: '正确题数', value: '$correct / $total', valueColor: const Color(0xFF2EC4B6)),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _StatItem(label: '用时', value: '${timeUsed}s', valueColor: muted),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _StatItem(label: '正确率', value: '$accuracy%', valueColor: const Color(0xFFB35C00)),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _StatItem(label: '最高连击', value: '$maxStreak', valueColor: muted),
+              ),
+            ],
+          ),
+          if (accuracyBonus > 0) ...[
+            const SizedBox(height: 12),
+            _StatItem(label: '准确率加分', value: '+$accuracyBonus', valueColor: const Color(0xFF2EC4B6)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _StatItem extends StatelessWidget {
+  const _StatItem({required this.label, required this.value, required this.valueColor});
+
+  final String label;
+  final String value;
+  final Color valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            color: valueColor,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _EvaluationCard extends StatelessWidget {
+  const _EvaluationCard({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF8E6),
+        borderRadius: BorderRadius.circular(_QuizResultPageState._radiusCard),
+        border: Border.all(color: const Color(0xFFFFD166).withOpacity(0.6)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.auto_awesome, size: 18, color: const Color(0xFFB35C00).withOpacity(0.9)),
+              const SizedBox(width: 8),
+              Text(
+                '本次评价',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: const Color(0xFF6F6B60),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            message,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: const Color(0xFF3d3a35),
+              height: 1.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BackButton extends StatelessWidget {
+  const _BackButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: Material(
+        color: const Color(0xFFFF9F1C),
+        borderRadius: BorderRadius.circular(_QuizResultPageState._radiusBtn),
+        elevation: 0,
+        shadowColor: const Color(0xFFFF9F1C).withOpacity(0.4),
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(_QuizResultPageState._radiusBtn),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(_QuizResultPageState._radiusBtn),
+              border: Border.all(color: Colors.white.withOpacity(0.25), width: 1),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.white.withOpacity(0.2),
+                  blurRadius: 0,
+                  offset: const Offset(0, -1),
+                ),
+              ],
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              '返回擂台',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../data/arena_data.dart';
+import '../../data/assistant_route.dart';
 import '../../data/demo_data.dart';
 import '../../lan/lan_duel.dart';
 import '../../widgets/reveal.dart';
@@ -38,8 +39,9 @@ class _ArenaPageState extends State<ArenaPage> {
   @override
   void didUpdateWidget(covariant ArenaPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // 切换到「擂台」tab 时请求接口：GET /arena/leaderboard/score、/arena/topics、/arena/leaderboard/zone
+    // 切换到「擂台」tab 时请求接口并同步用户个人积分（GET /arena/stats）
     if (widget.isArenaTabVisible && !oldWidget.isArenaTabVisible) {
+      ArenaStatsStore.syncFromServer();
       setState(() {
         _arenaDataFuture = ArenaDataRepository.load();
       });
@@ -47,6 +49,7 @@ class _ArenaPageState extends State<ArenaPage> {
   }
 
   Future<void> _refreshArenaData() async {
+    await ArenaStatsStore.syncFromServer();
     setState(() {
       _arenaDataFuture = ArenaDataRepository.load();
     });
@@ -130,7 +133,10 @@ class _ArenaPageState extends State<ArenaPage> {
                             IconButton(
                             onPressed: () => Navigator.of(context).push(
                               MaterialPageRoute(
-                                builder: (_) => _ArenaMyRankPage(yourScore: stats.totalScore),
+                                builder: (_) => _ArenaMyRankPage(
+                                  yourScore: stats.totalScore,
+                                  yourPkScore: stats.pkScore,
+                                ),
                               ),
                             ),
                             icon: const Icon(Icons.leaderboard_rounded),
@@ -231,6 +237,7 @@ class _ArenaPageState extends State<ArenaPage> {
                               builder: (_) => ScoreLeaderboardDetailPage(
                                 title: '在线 PK 排行',
                                 type: ScoreLeaderboardType.pk,
+                                yourScore: stats.pkScore,
                               ),
                             ),
                           ),
@@ -299,9 +306,10 @@ class _ArenaPageState extends State<ArenaPage> {
 }
 
 class _ArenaMyRankPage extends StatefulWidget {
-  const _ArenaMyRankPage({required this.yourScore});
+  const _ArenaMyRankPage({required this.yourScore, required this.yourPkScore});
 
   final int yourScore;
+  final int yourPkScore;
 
   @override
   State<_ArenaMyRankPage> createState() => _ArenaMyRankPageState();
@@ -310,6 +318,7 @@ class _ArenaMyRankPage extends StatefulWidget {
 class _ArenaMyRankPageState extends State<_ArenaMyRankPage> {
   List<LeaderboardEntry> _pkList = [];
   List<LeaderboardEntry> _personalList = [];
+  List<ChallengeSessionSummary> _challengeHistory = [];
   bool _loading = true;
 
   @override
@@ -319,12 +328,21 @@ class _ArenaMyRankPageState extends State<_ArenaMyRankPage> {
   }
 
   Future<void> _load() async {
-    final list = await ArenaDataRepository.loadFullScoreLeaderboard();
+    final results = await Future.wait([
+      ArenaDataRepository.loadFullScoreLeaderboard(type: ScoreLeaderboardType.pk),
+      ArenaDataRepository.loadFullScoreLeaderboard(type: ScoreLeaderboardType.personal),
+      ArenaChallengeRepository.loadHistory(limit: 20),
+    ]);
     if (!mounted) return;
-    final personalMerged = _mergeYou(list, widget.yourScore);
+    final pkList = results[0] as List<LeaderboardEntry>;
+    final personalList = results[1] as List<LeaderboardEntry>;
+    final history = results[2] as List<ChallengeSessionSummary>;
+    final pkMerged = _mergeYou(pkList, widget.yourPkScore);
+    final personalMerged = _mergeYou(personalList, widget.yourScore);
     setState(() {
-      _pkList = list;
+      _pkList = pkMerged;
       _personalList = personalMerged;
+      _challengeHistory = history;
       _loading = false;
     });
   }
@@ -372,46 +390,147 @@ class _ArenaMyRankPageState extends State<_ArenaMyRankPage> {
                 if (_loading)
                   const Expanded(child: Center(child: CircularProgressIndicator()))
                 else
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _RankTile(
-                          title: '在线 PK 排行',
-                          rank: pkRank,
-                          label: pkRank > 0 ? '第 $pkRank 名' : '暂未上榜',
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => ScoreLeaderboardDetailPage(
-                                title: '在线 PK 排行',
-                                type: ScoreLeaderboardType.pk,
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _RankTile(
+                            title: '在线 PK 排行',
+                            rank: pkRank,
+                            label: pkRank > 0 ? '第 $pkRank 名' : '暂未上榜',
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => ScoreLeaderboardDetailPage(
+                                  title: '在线 PK 排行',
+                                  type: ScoreLeaderboardType.pk,
+                                  yourScore: widget.yourPkScore,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 16),
-                        _RankTile(
-                          title: '个人积分排行',
-                          rank: personalRank,
-                          label: personalRank > 0 ? '第 $personalRank 名' : '暂未上榜',
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => ScoreLeaderboardDetailPage(
-                                title: '个人积分排行',
-                                type: ScoreLeaderboardType.personal,
-                                yourScore: widget.yourScore,
+                          const SizedBox(height: 16),
+                          _RankTile(
+                            title: '个人积分排行',
+                            rank: personalRank,
+                            label: personalRank > 0 ? '第 $personalRank 名' : '暂未上榜',
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => ScoreLeaderboardDetailPage(
+                                  title: '个人积分排行',
+                                  type: ScoreLeaderboardType.personal,
+                                  yourScore: widget.yourScore,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 24),
+                          Text('最近挑战', style: Theme.of(context).textTheme.titleLarge),
+                          const SizedBox(height: 12),
+                          if (_challengeHistory.isEmpty)
+                            Container(
+                              padding: const EdgeInsets.all(20),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(22),
+                                border: Border.all(color: const Color(0xFFFFD166)),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  '暂无挑战记录，去完成一次单人挑战吧～',
+                                  style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                                ),
+                              ),
+                            )
+                          else
+                            ..._challengeHistory.map(
+                              (s) => _ChallengeHistoryTile(
+                                summary: s,
+                                onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => ChallengeDetailPage(sessionId: s.id),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 最近挑战列表项：日期、主题、得分、正确率，点击进入详情
+class _ChallengeHistoryTile extends StatelessWidget {
+  const _ChallengeHistoryTile({required this.summary, this.onTap});
+
+  final ChallengeSessionSummary summary;
+  final VoidCallback? onTap;
+
+  /// 解析为本地时区并格式化为 月/日 时:分
+  static String _formatDate(dynamic createdAt) {
+    if (createdAt == null) return '';
+    DateTime local;
+    if (createdAt is DateTime) {
+      local = createdAt.isUtc ? createdAt.toLocal() : createdAt;
+    } else if (createdAt is String) {
+      final d = DateTime.tryParse(createdAt);
+      if (d == null) return createdAt;
+      local = d.isUtc ? d.toLocal() : d;
+    } else if (createdAt is num) {
+      final d = DateTime.fromMillisecondsSinceEpoch(createdAt.toInt() * 1000, isUtc: true);
+      local = d.toLocal();
+    } else {
+      return createdAt.toString();
+    }
+    return '${local.month}/${local.day} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final accuracy = (summary.accuracy * 100).toStringAsFixed(0);
+    final topicLabel = summary.subtopic != '全部' ? '${summary.topic} · ${summary.subtopic}' : summary.topic;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: const Color(0xFFFFD166)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(topicLabel, style: Theme.of(context).textTheme.titleSmall),
+                    const SizedBox(height: 4),
+                    Text(
+                      _formatDate(summary.createdAt),
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    ),
+                  ],
+                ),
+              ),
+              Text('${summary.score} 分', style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFFB35C00))),
+              const SizedBox(width: 12),
+              Text('正确率 $accuracy%', style: TextStyle(fontSize: 13, color: Colors.grey[700])),
+              const Icon(Icons.chevron_right_rounded, color: Color(0xFF9E9E9E)),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -486,8 +605,187 @@ class _RankTile extends StatelessWidget {
   }
 }
 
-/// 排行榜类型：PK 与个人积分（数据同源，个人榜会合并「你」）
-enum ScoreLeaderboardType { pk, personal }
+/// 某次挑战详情页：展示该次所有题目、用户选择与正确答案
+class ChallengeDetailPage extends StatefulWidget {
+  const ChallengeDetailPage({super.key, required this.sessionId});
+
+  final int sessionId;
+
+  @override
+  State<ChallengeDetailPage> createState() => _ChallengeDetailPageState();
+}
+
+class _ChallengeDetailPageState extends State<ChallengeDetailPage> {
+  ChallengeSessionDetail? _detail;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final detail = await ArenaChallengeRepository.loadDetail(widget.sessionId);
+    if (!mounted) return;
+    setState(() {
+      _detail = detail;
+      _loading = false;
+      _error = detail == null ? '加载失败' : null;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Stack(
+        children: [
+          const StarryBackground(),
+          SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.arrow_back_rounded),
+                    ),
+                    const SizedBox(width: 8),
+                    Text('挑战详情', style: Theme.of(context).textTheme.headlineSmall),
+                  ],
+                ),
+                if (_loading)
+                  const Expanded(child: Center(child: CircularProgressIndicator()))
+                else if (_error != null)
+                  Expanded(
+                    child: Center(
+                      child: Text(_error!, style: TextStyle(color: Colors.grey[600])),
+                    ),
+                  )
+                else
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _detailHeader(),
+                          const SizedBox(height: 20),
+                          Text('答题记录', style: Theme.of(context).textTheme.titleLarge),
+                          const SizedBox(height: 12),
+                          ...?_detail?.answers.asMap().entries.map((e) => _answerCard(e.key + 1, e.value)),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailHeader() {
+    final d = _detail!;
+    final accuracy = (d.accuracy * 100).toStringAsFixed(0);
+    final topicLabel = d.subtopic != '全部' ? '${d.topic} · ${d.subtopic}' : d.topic;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFFFD166)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(topicLabel, style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Text('得分 ${d.score}', style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFFB35C00))),
+              const SizedBox(width: 16),
+              Text('正确 $accuracy%', style: TextStyle(color: Colors.grey[700])),
+              const SizedBox(width: 16),
+              Text('${d.correctCount}/${d.totalQuestions} 题', style: TextStyle(color: Colors.grey[700])),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _answerCard(int index, ChallengeAnswerRecord a) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: a.isCorrect ? const Color(0xFFB8F1E0) : const Color(0xFFFFD6D6),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 24,
+                height: 24,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: a.isCorrect ? const Color(0xFF2EC4B6).withOpacity(0.2) : const Color(0xFFE63946).withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: a.isCorrect
+                    ? const Icon(Icons.check_rounded, size: 16, color: Color(0xFF2EC4B6))
+                    : const Icon(Icons.close_rounded, size: 16, color: Color(0xFFE63946)),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('第 $index 题', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                    const SizedBox(height: 4),
+                    Text(a.title, style: Theme.of(context).textTheme.titleSmall),
+                    const SizedBox(height: 8),
+                    Text('你的选择：${a.userChoice.isEmpty ? '未作答' : a.userChoice}', style: const TextStyle(fontSize: 13)),
+                    if (!a.isCorrect) ...[
+                      const SizedBox(height: 4),
+                      Text('正确答案：${a.correctAnswer}', style: TextStyle(fontSize: 13, color: const Color(0xFF2EC4B6), fontWeight: FontWeight.w600)),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () {
+                Navigator.of(context).popUntil((route) => route.isFirst);
+                assistantInitialQuestion.value = a.title;
+              },
+              icon: const Icon(Icons.auto_awesome, size: 18, color: Color(0xFFFF9F1C)),
+              label: const Text('问百晓通'),
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFFB35C00),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 /// 积分排行榜详情页：全量列表 + 搜索（可搜索昵称查当前排名）
 class ScoreLeaderboardDetailPage extends StatefulWidget {
@@ -528,29 +826,21 @@ class _ScoreLeaderboardDetailPageState extends State<ScoreLeaderboardDetailPage>
 
   Future<void> _load({String? search}) async {
     setState(() => _loading = true);
-    final list = await ArenaDataRepository.loadFullScoreLeaderboard(search: search);
-    if (widget.type == ScoreLeaderboardType.personal) {
-      final hasMe = list.any((e) => e.isMe);
-      final merged = hasMe
-          ? list.map((e) => e.isMe ? e.copyWith(name: '你', score: widget.yourScore) : e).toList()
-          : [
-              LeaderboardEntry(rank: 0, name: '你', score: widget.yourScore, isMe: true),
-              ...list.map((e) => e.copyWith(rank: 0)),
-            ];
-      merged.sort((a, b) => b.score.compareTo(a.score));
-      final ranked = merged.asMap().entries.map((e) => e.value.copyWith(rank: e.key + 1)).toList();
-      if (!mounted) return;
-      setState(() {
-        _fullList = ranked;
-        _loading = false;
-      });
-    } else {
-      if (!mounted) return;
-      setState(() {
-        _fullList = list;
-        _loading = false;
-      });
-    }
+    final list = await ArenaDataRepository.loadFullScoreLeaderboard(type: widget.type, search: search);
+    final hasMe = list.any((e) => e.isMe);
+    final merged = hasMe
+        ? list.map((e) => e.isMe ? e.copyWith(name: '你', score: widget.yourScore) : e).toList()
+        : [
+            LeaderboardEntry(rank: 0, name: '你', score: widget.yourScore, isMe: true),
+            ...list.map((e) => e.copyWith(rank: 0)),
+          ];
+    merged.sort((a, b) => b.score.compareTo(a.score));
+    final ranked = merged.asMap().entries.map((e) => e.value.copyWith(rank: e.key + 1)).toList();
+    if (!mounted) return;
+    setState(() {
+      _fullList = ranked;
+      _loading = false;
+    });
   }
 
   List<LeaderboardEntry> get _filteredList {

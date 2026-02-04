@@ -10,6 +10,7 @@ import 'profile.dart';
 class ArenaStats {
   const ArenaStats({
     required this.totalScore,
+    required this.pkScore,
     required this.totalCorrect,
     required this.matches,
     required this.maxStreak,
@@ -18,6 +19,8 @@ class ArenaStats {
   });
 
   final int totalScore;
+  /// 局域网 PK 累计得分，用于在线 PK 排行（与 totalScore 单人挑战分离）
+  final int pkScore;
   final int totalCorrect;
   final int matches;
   final int maxStreak;
@@ -27,6 +30,7 @@ class ArenaStats {
   static ArenaStats initial() {
     return const ArenaStats(
       totalScore: 0,
+      pkScore: 0,
       totalCorrect: 0,
       matches: 0,
       maxStreak: 0,
@@ -37,6 +41,7 @@ class ArenaStats {
 
   ArenaStats copyWith({
     int? totalScore,
+    int? pkScore,
     int? totalCorrect,
     int? matches,
     int? maxStreak,
@@ -45,6 +50,7 @@ class ArenaStats {
   }) {
     return ArenaStats(
       totalScore: totalScore ?? this.totalScore,
+      pkScore: pkScore ?? this.pkScore,
       totalCorrect: totalCorrect ?? this.totalCorrect,
       matches: matches ?? this.matches,
       maxStreak: maxStreak ?? this.maxStreak,
@@ -60,6 +66,12 @@ class ArenaStatsStore {
   static final ValueNotifier<Set<String>> unlocked =
       ValueNotifier<Set<String>>(<String>{});
   static List<String> _newlyUnlocked = [];
+
+  /// 从服务端拉取用户擂台统计并更新 store（个人积分、排行榜展示用）
+  static Future<void> syncFromServer() async {
+    final s = await ArenaStatsRepository.load();
+    stats.value = s;
+  }
 
   static void submit({
     required int score,
@@ -243,20 +255,27 @@ class ArenaDataRepository {
       headers['Authorization'] = 'Bearer $token';
     }
     try {
-      // 首页只取前 5 名
-      final scoreRes = await http.get(
-        Uri.parse('$baseUrl/arena/leaderboard/score?limit=5'),
+      // 在线 PK 排行（type=pk）与个人积分排行（type=personal）分开请求
+      final pkRes = await http.get(
+        Uri.parse('$baseUrl/arena/leaderboard/score?type=pk&limit=5'),
         headers: headers,
       );
-      if (scoreRes.statusCode != 200) return ArenaPageData.fallback();
-      final scoreData = jsonDecode(scoreRes.body) as Map<String, dynamic>?;
-      final listRaw = scoreData?['list'];
-      if (listRaw is! List) return ArenaPageData.fallback();
-      final scoreList = listRaw
+      final personalRes = await http.get(
+        Uri.parse('$baseUrl/arena/leaderboard/score?type=personal&limit=5'),
+        headers: headers,
+      );
+      if (pkRes.statusCode != 200 || personalRes.statusCode != 200) return ArenaPageData.fallback();
+      final pkData = jsonDecode(pkRes.body) as Map<String, dynamic>?;
+      final personalData = jsonDecode(personalRes.body) as Map<String, dynamic>?;
+      final pkRaw = pkData?['list'];
+      final personalRaw = personalData?['list'];
+      if (pkRaw is! List || personalRaw is! List) return ArenaPageData.fallback();
+      final pkList = pkRaw
           .map((e) => LeaderboardEntry.fromJson(e as Map<String, dynamic>))
           .toList();
-      final pkList = scoreList;
-      final personalList = List<LeaderboardEntry>.from(scoreList);
+      final personalList = personalRaw
+          .map((e) => LeaderboardEntry.fromJson(e as Map<String, dynamic>))
+          .toList();
 
       // 主题列表来自 GET /arena/topics
       final topicNames = await ArenaTopicsRepository.loadTopicNames(baseUrl);
@@ -293,8 +312,11 @@ class ArenaDataRepository {
     }
   }
 
-  /// 详情页全量排行榜（limit=200），可选按昵称搜索
-  static Future<List<LeaderboardEntry>> loadFullScoreLeaderboard({String? search}) async {
+  /// 详情页全量排行榜（limit=200），type 区分 pk / personal，可选按昵称搜索
+  static Future<List<LeaderboardEntry>> loadFullScoreLeaderboard({
+    required ScoreLeaderboardType type,
+    String? search,
+  }) async {
     final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
     final token = ProfileStore.authToken;
     final headers = <String, String>{};
@@ -302,9 +324,10 @@ class ArenaDataRepository {
       headers['Authorization'] = 'Bearer $token';
     }
     try {
+      final typeStr = type == ScoreLeaderboardType.pk ? 'pk' : 'personal';
       final uri = search != null && search.isNotEmpty
-          ? Uri.parse('$baseUrl/arena/leaderboard/score?limit=200&search=${Uri.encodeComponent(search)}')
-          : Uri.parse('$baseUrl/arena/leaderboard/score?limit=200');
+          ? Uri.parse('$baseUrl/arena/leaderboard/score?type=$typeStr&limit=200&search=${Uri.encodeComponent(search)}')
+          : Uri.parse('$baseUrl/arena/leaderboard/score?type=$typeStr&limit=200');
       final res = await http.get(uri, headers: headers);
       if (res.statusCode != 200) return [];
       final data = jsonDecode(res.body) as Map<String, dynamic>?;
@@ -318,6 +341,9 @@ class ArenaDataRepository {
     }
   }
 }
+
+/// 排行榜类型：在线 PK（局域网 pk_score） / 个人积分（单人挑战 total_score）
+enum ScoreLeaderboardType { pk, personal }
 
 /// 擂台主题列表：GET /arena/topics
 class ArenaTopicsRepository {
@@ -364,6 +390,7 @@ class ArenaStatsRepository {
       }
       return ArenaStats(
         totalScore: (data['totalScore'] as num?)?.toInt() ?? 0,
+        pkScore: (data['pkScore'] as num?)?.toInt() ?? 0,
         totalCorrect: 0,
         matches: (data['matches'] as num?)?.toInt() ?? 0,
         maxStreak: (data['maxStreak'] as num?)?.toInt() ?? 0,
@@ -377,6 +404,217 @@ class ArenaStatsRepository {
 }
 
 final Future<ArenaPageData> arenaPageDataFuture = ArenaDataRepository.load();
+
+/// 单次挑战摘要（最近挑战列表项）
+class ChallengeSessionSummary {
+  const ChallengeSessionSummary({
+    required this.id,
+    required this.topic,
+    required this.subtopic,
+    required this.totalQuestions,
+    required this.correctCount,
+    required this.score,
+    required this.accuracy,
+    required this.createdAt,
+  });
+
+  final int id;
+  final String topic;
+  final String subtopic;
+  final int totalQuestions;
+  final int correctCount;
+  final int score;
+  final double accuracy;
+  final dynamic createdAt;
+
+  factory ChallengeSessionSummary.fromJson(Map<String, dynamic> json) {
+    return ChallengeSessionSummary(
+      id: (json['id'] is num) ? (json['id'] as num).toInt() : 0,
+      topic: json['topic']?.toString() ?? '全部',
+      subtopic: json['subtopic']?.toString() ?? '全部',
+      totalQuestions: (json['totalQuestions'] is num) ? (json['totalQuestions'] as num).toInt() : 0,
+      correctCount: (json['correctCount'] is num) ? (json['correctCount'] as num).toInt() : 0,
+      score: (json['score'] is num) ? (json['score'] as num).toInt() : 0,
+      accuracy: (json['accuracy'] is num) ? (json['accuracy'] as num).toDouble() : 0.0,
+      createdAt: json['createdAt'],
+    );
+  }
+}
+
+/// 单题作答记录（提交与详情展示）
+class ChallengeAnswerRecord {
+  const ChallengeAnswerRecord({
+    required this.questionId,
+    required this.title,
+    required this.userChoice,
+    required this.correctAnswer,
+    required this.isCorrect,
+  });
+
+  final String questionId;
+  final String title;
+  final String userChoice;
+  final String correctAnswer;
+  final bool isCorrect;
+
+  factory ChallengeAnswerRecord.fromJson(Map<String, dynamic> json) {
+    return ChallengeAnswerRecord(
+      questionId: json['questionId']?.toString() ?? json['question_id']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      userChoice: json['userChoice']?.toString() ?? json['user_choice']?.toString() ?? '',
+      correctAnswer: json['correctAnswer']?.toString() ?? json['correct_answer']?.toString() ?? '',
+      isCorrect: json['isCorrect'] == true || json['is_correct'] == true,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'questionId': questionId,
+        'title': title,
+        'userChoice': userChoice,
+        'correctAnswer': correctAnswer,
+        'isCorrect': isCorrect,
+      };
+}
+
+/// 挑战详情（含每题作答）
+class ChallengeSessionDetail {
+  const ChallengeSessionDetail({
+    required this.id,
+    required this.topic,
+    required this.subtopic,
+    required this.totalQuestions,
+    required this.correctCount,
+    required this.score,
+    required this.accuracy,
+    required this.createdAt,
+    required this.answers,
+  });
+
+  final int id;
+  final String topic;
+  final String subtopic;
+  final int totalQuestions;
+  final int correctCount;
+  final int score;
+  final double accuracy;
+  final dynamic createdAt;
+  final List<ChallengeAnswerRecord> answers;
+
+  factory ChallengeSessionDetail.fromJson(Map<String, dynamic> json) {
+    final ans = json['answers'];
+    final list = ans is List
+        ? (ans as List).map((e) => ChallengeAnswerRecord.fromJson(Map<String, dynamic>.from(e as Map))).toList()
+        : <ChallengeAnswerRecord>[];
+    return ChallengeSessionDetail(
+      id: (json['id'] is num) ? (json['id'] as num).toInt() : 0,
+      topic: json['topic']?.toString() ?? '全部',
+      subtopic: json['subtopic']?.toString() ?? '全部',
+      totalQuestions: (json['totalQuestions'] is num) ? (json['totalQuestions'] as num).toInt() : 0,
+      correctCount: (json['correctCount'] is num) ? (json['correctCount'] as num).toInt() : 0,
+      score: (json['score'] is num) ? (json['score'] as num).toInt() : 0,
+      accuracy: (json['accuracy'] is num) ? (json['accuracy'] as num).toDouble() : 0.0,
+      createdAt: json['createdAt'],
+      answers: list,
+    );
+  }
+}
+
+/// 局域网 PK 结束后提交得分（只更新在线 PK 排行用的 pk_score）
+class ArenaPkRepository {
+  static Future<bool> submitScore(int score) async {
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    final token = ProfileStore.authToken;
+    if (token == null || token.isEmpty) return false;
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/arena/pk/submit'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'score': score}),
+      );
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+}
+
+/// 单人挑战：提交、历史、详情
+class ArenaChallengeRepository {
+  static Future<Map<String, dynamic>?> submitChallenge({
+    required String topic,
+    required String subtopic,
+    required int totalQuestions,
+    required int correctCount,
+    required int score,
+    required int maxStreak,
+    required List<Map<String, dynamic>> answers,
+  }) async {
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    final token = ProfileStore.authToken;
+    if (token == null || token.isEmpty) return null;
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/arena/challenge/submit'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'topic': topic,
+          'subtopic': subtopic,
+          'totalQuestions': totalQuestions,
+          'correctCount': correctCount,
+          'score': score,
+          'maxStreak': maxStreak,
+          'answers': answers,
+        }),
+      );
+      if (res.statusCode != 200) return null;
+      return jsonDecode(res.body) as Map<String, dynamic>?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<List<ChallengeSessionSummary>> loadHistory({int limit = 20}) async {
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    final token = ProfileStore.authToken;
+    if (token == null || token.isEmpty) return [];
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/arena/challenge/history?limit=$limit'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (res.statusCode != 200) return [];
+      final data = jsonDecode(res.body) as Map<String, dynamic>?;
+      final list = data?['list'];
+      if (list is! List) return [];
+      return list.map((e) => ChallengeSessionSummary.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<ChallengeSessionDetail?> loadDetail(int id) async {
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    final token = ProfileStore.authToken;
+    if (token == null || token.isEmpty) return null;
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/arena/challenge/$id'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (res.statusCode != 200) return null;
+      final data = jsonDecode(res.body) as Map<String, dynamic>?;
+      return data != null ? ChallengeSessionDetail.fromJson(data) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+}
 
 /// 擂台题库：从 GET /arena/questions 拉取，支持 topic、subtopic 筛选
 class ArenaQuestionsRepository {
