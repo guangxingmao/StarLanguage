@@ -155,12 +155,16 @@ class StarKnowShell extends StatefulWidget {
 
 class _StarKnowShellState extends State<StarKnowShell> {
   int _index = 0;
+  static const int _arenaTabIndex = 3;
 
   List<Widget> get _pages => [
     GrowthPage(selectedTabIndex: _index),
     CommunityPage(selectedTabIndex: _index),
     AssistantPage(),
-    ArenaPage(),
+    ArenaPage(
+      selectedTabIndex: _index,
+      isArenaTabVisible: _index == _arenaTabIndex,
+    ),
     LearningPage(),
   ];
 
@@ -209,8 +213,8 @@ class _StarKnowShellState extends State<StarKnowShell> {
                   _NavItem(
                     label: '擂台',
                     icon: Icons.sports_esports_rounded,
-                    isActive: _index == 3,
-                    onTap: () => setState(() => _index = 3),
+                    isActive: _index == _arenaTabIndex,
+                    onTap: () => setState(() => _index = _arenaTabIndex),
                   ),
                   _NavItem(
                     label: '学习',

@@ -11,7 +11,14 @@ import '../../widgets/starry_background.dart';
 import 'arena_quiz.dart' show LanDuelPage, QuizPage;
 
 class ArenaPage extends StatefulWidget {
-  const ArenaPage({super.key});
+  const ArenaPage({
+    super.key,
+    required this.selectedTabIndex,
+    required this.isArenaTabVisible,
+  });
+
+  final int selectedTabIndex;
+  final bool isArenaTabVisible;
 
   @override
   State<ArenaPage> createState() => _ArenaPageState();
@@ -20,8 +27,40 @@ class ArenaPage extends StatefulWidget {
 class _ArenaPageState extends State<ArenaPage> {
   String _selectedTopic = '全部';
   String _selectedSubtopic = '全部';
+  late Future<ArenaPageData> _arenaDataFuture;
 
-  List<LeaderboardEntry> _buildPersonalLeaderboard(
+  @override
+  void initState() {
+    super.initState();
+    _arenaDataFuture = Future.value(ArenaPageData.fallback());
+  }
+
+  @override
+  void didUpdateWidget(covariant ArenaPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 切换到「擂台」tab 时请求接口：GET /arena/leaderboard/score、/arena/topics、/arena/leaderboard/zone
+    if (widget.isArenaTabVisible && !oldWidget.isArenaTabVisible) {
+      setState(() {
+        _arenaDataFuture = ArenaDataRepository.load();
+      });
+    }
+  }
+
+  Future<void> _refreshArenaData() async {
+    setState(() {
+      _arenaDataFuture = ArenaDataRepository.load();
+    });
+  }
+
+  List<String> _subTopicsFor(List<ArenaTopicItem> topicItems, String topic) {
+    if (topic == '全部') return ['全部'];
+    for (final e in topicItems) {
+      if (e.topic == topic) return e.subtopics;
+    }
+    return ['全部'];
+  }
+
+  List<LeaderboardEntry> _buildPersonalLeaderboardTop5(
     int yourScore,
     List<LeaderboardEntry> fromApi,
   ) {
@@ -44,56 +83,54 @@ class _ArenaPageState extends State<ArenaPage> {
         SafeArea(
           child: FutureBuilder<List<dynamic>>(
             future: Future.wait([
-              demoDataFuture,
-              arenaPageDataFuture,
-              ArenaQuestionsRepository.load(),
+              _arenaDataFuture,
+              ArenaQuestionsRepository.load(topic: _selectedTopic, subtopic: _selectedSubtopic),
             ]),
             builder: (context, snapshot) {
-              final data = snapshot.hasData
-                  ? (snapshot.data![0] as DemoData)
-                  : DemoData.fallback();
               final arenaData = snapshot.hasData
-                  ? (snapshot.data![1] as ArenaPageData)
+                  ? (snapshot.data![0] as ArenaPageData)
                   : ArenaPageData.fallback();
-              final apiQuestions = snapshot.hasData && snapshot.data!.length > 2
-                  ? (snapshot.data![2] as List<Question>)
+              final apiQuestions = snapshot.hasData && snapshot.data!.length > 1
+                  ? (snapshot.data![1] as List<Question>)
                   : <Question>[];
-              final quizData = apiQuestions.isNotEmpty
-                  ? DemoData(
-                      topics: data.topics,
-                      contents: data.contents,
-                      questions: apiQuestions,
-                      achievements: data.achievements,
-                      communityPosts: data.communityPosts,
-                    )
-                  : data;
-              final topics = ['全部', ...data.topics.map((t) => t.name)];
-              final subTopics = _subTopicsFor(data, _selectedTopic);
+              final topicNames = arenaData.topicNames;
+              final topics = ['全部', ...topicNames];
+              final subTopics = _subTopicsFor(arenaData.topicItems, _selectedTopic);
+              final quizData = DemoData(
+                topics: topics.map((name) => Topic(id: name, name: name)).toList(),
+                contents: const [],
+                questions: apiQuestions,
+                achievements: const [],
+                communityPosts: const [],
+              );
               return ValueListenableBuilder<ArenaStats>(
                 valueListenable: ArenaStatsStore.stats,
                 builder: (context, stats, _) {
-                  return ListView(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('知识擂台', style: Theme.of(context).textTheme.headlineLarge),
-                                const SizedBox(height: 4),
-                                const Text('快问快答，看谁最闪', style: TextStyle(color: Color(0xFF6F6B60))),
-                              ],
+                  final personalTop5 = _buildPersonalLeaderboardTop5(
+                    stats.totalScore,
+                    arenaData.personalLeaderboardEntries,
+                  );
+                  return RefreshIndicator(
+                    onRefresh: _refreshArenaData,
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('知识擂台', style: Theme.of(context).textTheme.headlineLarge),
+                                  const SizedBox(height: 4),
+                                  const Text('快问快答，看谁最闪', style: TextStyle(color: Color(0xFF6F6B60))),
+                                ],
+                              ),
                             ),
-                          ),
-                          IconButton(
+                            IconButton(
                             onPressed: () => Navigator.of(context).push(
                               MaterialPageRoute(
-                                builder: (_) => _ArenaMyRankPage(
-                                  pkList: arenaData.pkLeaderboard,
-                                  personalList: _buildPersonalLeaderboard(stats.totalScore, arenaData.personalLeaderboardEntries),
-                                ),
+                                builder: (_) => _ArenaMyRankPage(yourScore: stats.totalScore),
                               ),
                             ),
                             icon: const Icon(Icons.leaderboard_rounded),
@@ -188,6 +225,15 @@ class _ArenaPageState extends State<ArenaPage> {
                         child: LeaderboardCard(
                           title: '在线 PK 排行',
                           entries: arenaData.pkLeaderboard,
+                          maxVisible: 5,
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => ScoreLeaderboardDetailPage(
+                                title: '在线 PK 排行',
+                                type: ScoreLeaderboardType.pk,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -195,9 +241,16 @@ class _ArenaPageState extends State<ArenaPage> {
                         delay: 220,
                         child: LeaderboardCard(
                           title: '个人积分排行',
-                          entries: _buildPersonalLeaderboard(
-                            stats.totalScore,
-                            arenaData.personalLeaderboardEntries,
+                          entries: personalTop5,
+                          maxVisible: 5,
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => ScoreLeaderboardDetailPage(
+                                title: '个人积分排行',
+                                type: ScoreLeaderboardType.personal,
+                                yourScore: stats.totalScore,
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -207,13 +260,14 @@ class _ArenaPageState extends State<ArenaPage> {
                       Reveal(
                         delay: 300,
                         child: ZoneLeaderboardRow(
-                          topics: data.topics.map((t) => t.name).toList(),
+                          topics: topicNames,
                           stats: stats,
                           zoneLeaderboardTemplate: arenaData.zoneLeaderboardTemplate,
                           zoneLeaders: arenaData.zoneLeaders,
                         ),
                       ),
-                    ],
+                      ],
+                    ),
                   );
                 },
               );
@@ -244,14 +298,48 @@ class _ArenaPageState extends State<ArenaPage> {
   }
 }
 
-class _ArenaMyRankPage extends StatelessWidget {
-  const _ArenaMyRankPage({
-    required this.pkList,
-    required this.personalList,
-  });
+class _ArenaMyRankPage extends StatefulWidget {
+  const _ArenaMyRankPage({required this.yourScore});
 
-  final List<LeaderboardEntry> pkList;
-  final List<LeaderboardEntry> personalList;
+  final int yourScore;
+
+  @override
+  State<_ArenaMyRankPage> createState() => _ArenaMyRankPageState();
+}
+
+class _ArenaMyRankPageState extends State<_ArenaMyRankPage> {
+  List<LeaderboardEntry> _pkList = [];
+  List<LeaderboardEntry> _personalList = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final list = await ArenaDataRepository.loadFullScoreLeaderboard();
+    if (!mounted) return;
+    final personalMerged = _mergeYou(list, widget.yourScore);
+    setState(() {
+      _pkList = list;
+      _personalList = personalMerged;
+      _loading = false;
+    });
+  }
+
+  List<LeaderboardEntry> _mergeYou(List<LeaderboardEntry> fromApi, int yourScore) {
+    final hasMe = fromApi.any((e) => e.isMe);
+    final merged = hasMe
+        ? fromApi.map((e) => e.isMe ? e.copyWith(name: '你', score: yourScore) : e).toList()
+        : [
+            LeaderboardEntry(rank: 0, name: '你', score: yourScore, isMe: true),
+            ...fromApi.map((e) => e.copyWith(rank: 0)),
+          ];
+    merged.sort((a, b) => b.score.compareTo(a.score));
+    return merged.asMap().entries.map((e) => e.value.copyWith(rank: e.key + 1)).toList();
+  }
 
   int _myRank(List<LeaderboardEntry> list) {
     final idx = list.indexWhere((e) => e.isMe || e.name == '你');
@@ -260,8 +348,8 @@ class _ArenaMyRankPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pkRank = _myRank(pkList);
-    final personalRank = _myRank(personalList);
+    final pkRank = _myRank(_pkList);
+    final personalRank = _myRank(_personalList);
     return Scaffold(
       body: Stack(
         children: [
@@ -281,25 +369,45 @@ class _ArenaMyRankPage extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 24),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _RankTile(
-                        title: '在线 PK 排行',
-                        rank: pkRank,
-                        label: pkRank > 0 ? '第 $pkRank 名' : '暂未上榜',
-                      ),
-                      const SizedBox(height: 16),
-                      _RankTile(
-                        title: '个人积分排行',
-                        rank: personalRank,
-                        label: personalRank > 0 ? '第 $personalRank 名' : '暂未上榜',
-                      ),
-                    ],
+                if (_loading)
+                  const Expanded(child: Center(child: CircularProgressIndicator()))
+                else
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _RankTile(
+                          title: '在线 PK 排行',
+                          rank: pkRank,
+                          label: pkRank > 0 ? '第 $pkRank 名' : '暂未上榜',
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => ScoreLeaderboardDetailPage(
+                                title: '在线 PK 排行',
+                                type: ScoreLeaderboardType.pk,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        _RankTile(
+                          title: '个人积分排行',
+                          rank: personalRank,
+                          label: personalRank > 0 ? '第 $personalRank 名' : '暂未上榜',
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => ScoreLeaderboardDetailPage(
+                                title: '个人积分排行',
+                                type: ScoreLeaderboardType.personal,
+                                yourScore: widget.yourScore,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -310,15 +418,24 @@ class _ArenaMyRankPage extends StatelessWidget {
 }
 
 class _RankTile extends StatelessWidget {
-  const _RankTile({required this.title, required this.rank, required this.label});
+  const _RankTile({
+    required this.title,
+    required this.rank,
+    required this.label,
+    this.onTap,
+  });
 
   final String title;
   final int rank;
   final String label;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(22),
+      child: Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -359,6 +476,206 @@ class _RankTile extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                   color: rank > 0 ? const Color(0xFFB35C00) : const Color(0xFF6F6B60),
                 )),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+    );
+  }
+}
+
+/// 排行榜类型：PK 与个人积分（数据同源，个人榜会合并「你」）
+enum ScoreLeaderboardType { pk, personal }
+
+/// 积分排行榜详情页：全量列表 + 搜索（可搜索昵称查当前排名）
+class ScoreLeaderboardDetailPage extends StatefulWidget {
+  const ScoreLeaderboardDetailPage({
+    super.key,
+    required this.title,
+    required this.type,
+    this.yourScore = 0,
+  });
+
+  final String title;
+  final ScoreLeaderboardType type;
+  final int yourScore;
+
+  @override
+  State<ScoreLeaderboardDetailPage> createState() => _ScoreLeaderboardDetailPageState();
+}
+
+class _ScoreLeaderboardDetailPageState extends State<ScoreLeaderboardDetailPage> {
+  List<LeaderboardEntry> _fullList = [];
+  bool _loading = true;
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load({String? search}) async {
+    setState(() => _loading = true);
+    final list = await ArenaDataRepository.loadFullScoreLeaderboard(search: search);
+    if (widget.type == ScoreLeaderboardType.personal) {
+      final hasMe = list.any((e) => e.isMe);
+      final merged = hasMe
+          ? list.map((e) => e.isMe ? e.copyWith(name: '你', score: widget.yourScore) : e).toList()
+          : [
+              LeaderboardEntry(rank: 0, name: '你', score: widget.yourScore, isMe: true),
+              ...list.map((e) => e.copyWith(rank: 0)),
+            ];
+      merged.sort((a, b) => b.score.compareTo(a.score));
+      final ranked = merged.asMap().entries.map((e) => e.value.copyWith(rank: e.key + 1)).toList();
+      if (!mounted) return;
+      setState(() {
+        _fullList = ranked;
+        _loading = false;
+      });
+    } else {
+      if (!mounted) return;
+      setState(() {
+        _fullList = list;
+        _loading = false;
+      });
+    }
+  }
+
+  List<LeaderboardEntry> get _filteredList {
+    if (_searchQuery.trim().isEmpty) return _fullList;
+    final q = _searchQuery.trim().toLowerCase();
+    return _fullList.where((e) => e.name.toLowerCase().contains(q)).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = _filteredList;
+    return Scaffold(
+      body: Stack(
+        children: [
+          const StarryBackground(),
+          SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.arrow_back_rounded),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        widget.title,
+                        style: Theme.of(context).textTheme.headlineSmall,
+                      ),
+                    ),
+                  ],
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: '搜索昵称查排名',
+                      prefixIcon: const Icon(Icons.search_rounded),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      filled: true,
+                      fillColor: Colors.white,
+                    ),
+                    onChanged: (v) => setState(() => _searchQuery = v),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: _loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : filtered.isEmpty
+                          ? Center(
+                              child: Text(
+                                _searchQuery.isEmpty ? '暂无排行数据' : '未找到「$_searchQuery」',
+                                style: const TextStyle(color: Color(0xFF6F6B60)),
+                              ),
+                            )
+                          : ListView.builder(
+                              controller: _scrollController,
+                              padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                              itemCount: filtered.length,
+                              itemBuilder: (context, index) {
+                                final entry = filtered[index];
+                                final isCurrentUser = entry.isMe || entry.name == '你';
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 10),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                    decoration: BoxDecoration(
+                                      color: isCurrentUser ? const Color(0xFFFFF8E8) : Colors.white,
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: isCurrentUser
+                                          ? Border.all(color: const Color(0xFFFFD166).withOpacity(0.6))
+                                          : null,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          width: 28,
+                                          height: 28,
+                                          decoration: BoxDecoration(
+                                            color: isCurrentUser
+                                                ? const Color(0xFFFF9F1C).withOpacity(0.2)
+                                                : const Color(0xFFFFF1D0),
+                                            borderRadius: BorderRadius.circular(10),
+                                          ),
+                                          child: Center(
+                                            child: Text(
+                                              '${entry.rank}',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                                color: isCurrentUser ? const Color(0xFFB35C00) : null,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Text(
+                                            entry.name,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontWeight: isCurrentUser ? FontWeight.w600 : null,
+                                              color: isCurrentUser ? const Color(0xFF8B6914) : null,
+                                            ),
+                                          ),
+                                        ),
+                                        Text(
+                                          '${entry.score}',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            color: isCurrentUser ? const Color(0xFFB35C00) : null,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                ),
               ],
             ),
           ),
@@ -773,33 +1090,54 @@ class ArenaHero extends StatelessWidget {
 }
 
 class LeaderboardCard extends StatelessWidget {
-  const LeaderboardCard({super.key, required this.title, required this.entries});
+  const LeaderboardCard({
+    super.key,
+    required this.title,
+    required this.entries,
+    this.maxVisible,
+    this.onTap,
+  });
 
   final String title;
   final List<LeaderboardEntry> entries;
+  /// 首页只显示前 N 条，null 表示全部
+  final int? maxVisible;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFFFD166)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 10),
-          ...entries.map(
+    final showEntries = maxVisible != null ? entries.take(maxVisible!).toList() : entries;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(22),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: const Color(0xFFFFD166)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(title, style: Theme.of(context).textTheme.titleLarge),
+                ),
+                if (onTap != null)
+                  const Icon(Icons.chevron_right_rounded, color: Color(0xFF6F6B60)),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ...showEntries.map(
             (entry) {
               final isCurrentUser = entry.isMe || entry.name == '你';
               return Padding(
@@ -854,8 +1192,22 @@ class LeaderboardCard extends StatelessWidget {
               );
             },
           ),
+            if (onTap != null && maxVisible != null && entries.length > maxVisible!)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Center(
+                  child: Text(
+                    '查看全部排名',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ),
+              ),
         ],
       ),
+    ),
     );
   }
 }

@@ -2,16 +2,48 @@ const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { pool } = require('../db');
 
 function routes(app) {
-  // 题库列表（可不登录访问）；?topic=历史 按主题筛选
+  // 题库主题与子主题（供前端筛选器、分区榜使用）
+  app.get('/arena/topics', async (_req, res) => {
+    try {
+      const r = await pool.query(
+        'SELECT DISTINCT topic, subtopic FROM arena_questions ORDER BY topic, subtopic'
+      );
+      const byTopic = {};
+      for (const row of r.rows || []) {
+        const t = row.topic || '全部';
+        if (!byTopic[t]) byTopic[t] = [];
+        const sub = row.subtopic || '综合知识';
+        if (!byTopic[t].includes(sub)) byTopic[t].push(sub);
+      }
+      const topics = Object.entries(byTopic).map(([topic, subtopics]) => ({
+        topic,
+        subtopics: ['全部', ...subtopics],
+      }));
+      res.json({ topics });
+    } catch (err) {
+      console.error('[arena topics]', err);
+      res.status(500).json({ error: 'server_error', message: '获取主题列表失败' });
+    }
+  });
+
+  // 题库列表（可不登录访问）；?topic=历史&subtopic=朝代故事 按主题/子主题筛选
   app.get('/arena/questions', async (req, res) => {
     const topic = req.query.topic && String(req.query.topic).trim();
+    const subtopic = req.query.subtopic && String(req.query.subtopic).trim();
     try {
       let r;
       if (topic && topic !== '全部') {
-        r = await pool.query(
-          'SELECT id, topic, subtopic, title, options, answer FROM arena_questions WHERE topic = $1 ORDER BY id',
-          [topic]
-        );
+        if (subtopic && subtopic !== '全部') {
+          r = await pool.query(
+            'SELECT id, topic, subtopic, title, options, answer FROM arena_questions WHERE topic = $1 AND subtopic = $2 ORDER BY id',
+            [topic, subtopic]
+          );
+        } else {
+          r = await pool.query(
+            'SELECT id, topic, subtopic, title, options, answer FROM arena_questions WHERE topic = $1 ORDER BY id',
+            [topic]
+          );
+        }
       } else {
         r = await pool.query(
           'SELECT id, topic, subtopic, title, options, answer FROM arena_questions ORDER BY id'
@@ -66,20 +98,27 @@ function routes(app) {
   });
 
   // 在线 PK 排行 / 个人积分排行（按 total_score 排序，可选鉴权以标记 isMe）
+  // ?limit=5 首页仅前5，?limit=200 详情页全量；?search=关键词 按昵称搜索并返回其排名
   app.get('/arena/leaderboard/score', optionalAuth, async (req, res) => {
-    const limit = Math.min(parseInt(req.query.limit, 10) || 10, 50);
+    const limit = Math.min(parseInt(req.query.limit, 10) || 10, 200);
+    const search = (req.query.search && String(req.query.search).trim()) || '';
     const authPhone = req.auth?.phone;
     try {
       const r = await pool.query(
-        `SELECT u.phone, u.name, s.total_score AS score
-         FROM user_arena_stats s
-         JOIN users u ON u.phone = s.phone
-         ORDER BY s.total_score DESC NULLS LAST
+        `WITH ranked AS (
+           SELECT u.phone, u.name, s.total_score AS score,
+                  ROW_NUMBER() OVER (ORDER BY s.total_score DESC NULLS LAST) AS rn
+           FROM user_arena_stats s
+           JOIN users u ON u.phone = s.phone
+         )
+         SELECT phone, name, score, rn FROM ranked
+         WHERE ($2::text = '' OR name ILIKE '%' || $2 || '%')
+         ORDER BY rn
          LIMIT $1`,
-        [limit]
+        [search ? 200 : limit, search]
       );
-      const list = (r.rows || []).map((row, i) => ({
-        rank: i + 1,
+      const list = (r.rows || []).map((row) => ({
+        rank: Number(row.rn) || 0,
         name: row.name || '',
         score: Number(row.score) || 0,
         isMe: !!authPhone && row.phone === authPhone,

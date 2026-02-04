@@ -129,11 +129,18 @@ class LeaderboardEntry {
 
   factory LeaderboardEntry.fromJson(Map<String, dynamic> json) {
     return LeaderboardEntry(
-      rank: (json['rank'] as num?)?.toInt() ?? 0,
-      name: json['name'] as String? ?? '',
-      score: (json['score'] as num?)?.toInt() ?? 0,
-      isMe: json['isMe'] as bool? ?? false,
+      rank: _parseInt(json['rank']),
+      name: json['name']?.toString() ?? '',
+      score: _parseInt(json['score']),
+      isMe: json['isMe'] == true,
     );
+  }
+
+  static int _parseInt(dynamic v) {
+    if (v == null) return 0;
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse(v.toString()) ?? 0;
   }
 
   Map<String, dynamic> toJson() => {'rank': rank, 'name': name, 'score': score, 'isMe': isMe};
@@ -148,25 +155,50 @@ class LeaderboardEntry {
   }
 }
 
-/// 擂台页数据（来自后端接口，失败时用 fallback）
+/// 擂台主题（来自 GET /arena/topics）
+class ArenaTopicItem {
+  const ArenaTopicItem({required this.topic, required this.subtopics});
+  final String topic;
+  final List<String> subtopics;
+
+  factory ArenaTopicItem.fromJson(Map<String, dynamic> json) {
+    final sub = json['subtopics'];
+    return ArenaTopicItem(
+      topic: json['topic'] as String? ?? '',
+      subtopics: sub is List ? sub.map((e) => e.toString()).toList() : ['全部'],
+    );
+  }
+}
+
+/// 擂台页数据（来自后端接口，失败时用空数据，不再用假数据）
 class ArenaPageData {
   const ArenaPageData({
     required this.pkLeaderboard,
     required this.personalLeaderboardEntries,
     required this.zoneLeaderboardTemplate,
     this.zoneLeaders = const {},
+    this.topicNames = const [],
+    this.topicItems = const [],
   });
 
-  /// 在线 PK 排行（与个人积分同源，按 total_score）
+  /// 在线 PK 排行（与个人积分同源，首页仅前 5）
   final List<LeaderboardEntry> pkLeaderboard;
-  /// 个人积分排行（与 pk 同源，前端会合并「你」并重排）
+  /// 个人积分排行（与 pk 同源，首页仅前 5，前端会合并「你」并重排）
   final List<LeaderboardEntry> personalLeaderboardEntries;
   /// 分区榜模板（接口无数据时 fallback）
   final List<LeaderboardEntry> zoneLeaderboardTemplate;
   /// 分区榜按主题的榜单（topic -> list），有则优先用
   final Map<String, List<LeaderboardEntry>> zoneLeaders;
+  /// 主题名称列表（用于筛选与分区榜）
+  final List<String> topicNames;
+  /// 主题与子主题（用于筛选器）
+  final List<ArenaTopicItem> topicItems;
 
   factory ArenaPageData.fromJson(Map<String, dynamic> json) {
+    final topicItemsRaw = json['topicItems'] as List<dynamic>? ?? [];
+    final topicItems = topicItemsRaw
+        .map((e) => ArenaTopicItem.fromJson(e as Map<String, dynamic>))
+        .toList();
     return ArenaPageData(
       pkLeaderboard: (json['pkLeaderboard'] as List<dynamic>? ?? [])
           .map((e) => LeaderboardEntry.fromJson(e as Map<String, dynamic>))
@@ -178,6 +210,8 @@ class ArenaPageData {
           .map((e) => LeaderboardEntry.fromJson(e as Map<String, dynamic>))
           .toList(),
       zoneLeaders: const {},
+      topicNames: (json['topicNames'] as List<dynamic>? ?? []).map((e) => e.toString()).toList(),
+      topicItems: topicItems,
     );
   }
 
@@ -189,31 +223,17 @@ class ArenaPageData {
 
   static ArenaPageData fallback() {
     return const ArenaPageData(
-      pkLeaderboard: [
-        LeaderboardEntry(rank: 1, name: '星知战神', score: 2350),
-        LeaderboardEntry(rank: 2, name: '小小挑战王', score: 2190),
-        LeaderboardEntry(rank: 3, name: '知识飞船', score: 2045),
-        LeaderboardEntry(rank: 4, name: '星际飞手', score: 1980),
-        LeaderboardEntry(rank: 5, name: '闪电回答', score: 1920),
-      ],
-      personalLeaderboardEntries: [
-        LeaderboardEntry(rank: 0, name: '小星星', score: 1740),
-        LeaderboardEntry(rank: 0, name: '光速答题王', score: 1695),
-        LeaderboardEntry(rank: 0, name: '跃迁少年', score: 1580),
-        LeaderboardEntry(rank: 0, name: '知识火箭', score: 1470),
-      ],
-      zoneLeaderboardTemplate: [
-        LeaderboardEntry(rank: 0, name: '星河小队', score: 1820),
-        LeaderboardEntry(rank: 0, name: '晨星', score: 1710),
-        LeaderboardEntry(rank: 0, name: '飞快答题', score: 1640),
-        LeaderboardEntry(rank: 0, name: '知识通关', score: 1550),
-        LeaderboardEntry(rank: 0, name: '探索者', score: 1470),
-      ],
+      pkLeaderboard: [],
+      personalLeaderboardEntries: [],
+      zoneLeaderboardTemplate: [],
+      zoneLeaders: {},
+      topicNames: [],
+      topicItems: [],
     );
   }
 }
 
-/// 擂台页数据仓库：从后端获取排行榜，失败则用 fallback
+/// 擂台页数据仓库：从后端获取排行榜与主题，不再使用假数据
 class ArenaDataRepository {
   static Future<ArenaPageData> load() async {
     final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
@@ -223,8 +243,9 @@ class ArenaDataRepository {
       headers['Authorization'] = 'Bearer $token';
     }
     try {
+      // 首页只取前 5 名
       final scoreRes = await http.get(
-        Uri.parse('$baseUrl/arena/leaderboard/score?limit=10'),
+        Uri.parse('$baseUrl/arena/leaderboard/score?limit=5'),
         headers: headers,
       );
       if (scoreRes.statusCode != 200) return ArenaPageData.fallback();
@@ -234,12 +255,13 @@ class ArenaDataRepository {
       final scoreList = listRaw
           .map((e) => LeaderboardEntry.fromJson(e as Map<String, dynamic>))
           .toList();
-      final pkList = scoreList.take(5).toList();
+      final pkList = scoreList;
       final personalList = List<LeaderboardEntry>.from(scoreList);
 
-      final topics = ['历史', '篮球', '科学', '计算机'];
+      // 主题列表来自 GET /arena/topics
+      final topicNames = await ArenaTopicsRepository.loadTopicNames(baseUrl);
       final zoneLeaders = <String, List<LeaderboardEntry>>{};
-      for (final topic in topics) {
+      for (final topic in topicNames.take(6)) {
         try {
           final zoneRes = await http.get(
             Uri.parse('$baseUrl/arena/leaderboard/zone?topic=${Uri.encodeComponent(topic)}&limit=10'),
@@ -257,15 +279,64 @@ class ArenaDataRepository {
         } catch (_) {}
       }
 
+      final topicItems = await ArenaTopicsRepository.load(baseUrl);
       return ArenaPageData(
         pkLeaderboard: pkList,
         personalLeaderboardEntries: personalList,
-        zoneLeaderboardTemplate: ArenaPageData.fallback().zoneLeaderboardTemplate,
+        zoneLeaderboardTemplate: const [],
         zoneLeaders: zoneLeaders,
+        topicNames: topicNames,
+        topicItems: topicItems,
       );
     } catch (_) {
       return ArenaPageData.fallback();
     }
+  }
+
+  /// 详情页全量排行榜（limit=200），可选按昵称搜索
+  static Future<List<LeaderboardEntry>> loadFullScoreLeaderboard({String? search}) async {
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    final token = ProfileStore.authToken;
+    final headers = <String, String>{};
+    if (token != null && token.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+    try {
+      final uri = search != null && search.isNotEmpty
+          ? Uri.parse('$baseUrl/arena/leaderboard/score?limit=200&search=${Uri.encodeComponent(search)}')
+          : Uri.parse('$baseUrl/arena/leaderboard/score?limit=200');
+      final res = await http.get(uri, headers: headers);
+      if (res.statusCode != 200) return [];
+      final data = jsonDecode(res.body) as Map<String, dynamic>?;
+      final listRaw = data?['list'];
+      if (listRaw is! List) return [];
+      return listRaw
+          .map((e) => LeaderboardEntry.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+}
+
+/// 擂台主题列表：GET /arena/topics
+class ArenaTopicsRepository {
+  static Future<List<ArenaTopicItem>> load(String baseUrl) async {
+    try {
+      final res = await http.get(Uri.parse('$baseUrl/arena/topics'));
+      if (res.statusCode != 200) return [];
+      final data = jsonDecode(res.body) as Map<String, dynamic>?;
+      final raw = data?['topics'];
+      if (raw is! List) return [];
+      return raw.map((e) => ArenaTopicItem.fromJson(e as Map<String, dynamic>)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<List<String>> loadTopicNames(String baseUrl) async {
+    final list = await load(baseUrl);
+    return list.map((e) => e.topic).toList();
   }
 }
 
@@ -307,14 +378,21 @@ class ArenaStatsRepository {
 
 final Future<ArenaPageData> arenaPageDataFuture = ArenaDataRepository.load();
 
-/// 擂台题库：从 GET /arena/questions 拉取，失败或空则返回空列表
+/// 擂台题库：从 GET /arena/questions 拉取，支持 topic、subtopic 筛选
 class ArenaQuestionsRepository {
-  static Future<List<Question>> load({String? topic}) async {
+  static Future<List<Question>> load({String? topic, String? subtopic}) async {
     final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
     try {
-      final uri = topic != null && topic.isNotEmpty && topic != '全部'
-          ? Uri.parse('$baseUrl/arena/questions?topic=${Uri.encodeComponent(topic)}')
-          : Uri.parse('$baseUrl/arena/questions');
+      Uri uri;
+      if (topic != null && topic.isNotEmpty && topic != '全部') {
+        if (subtopic != null && subtopic.isNotEmpty && subtopic != '全部') {
+          uri = Uri.parse('$baseUrl/arena/questions?topic=${Uri.encodeComponent(topic)}&subtopic=${Uri.encodeComponent(subtopic)}');
+        } else {
+          uri = Uri.parse('$baseUrl/arena/questions?topic=${Uri.encodeComponent(topic)}');
+        }
+      } else {
+        uri = Uri.parse('$baseUrl/arena/questions');
+      }
       final res = await http.get(uri);
       if (res.statusCode != 200) return [];
       final data = jsonDecode(res.body) as Map<String, dynamic>?;
