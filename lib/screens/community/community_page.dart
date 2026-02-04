@@ -197,6 +197,7 @@ class _CommunityPageState extends State<CommunityPage> with RouteAware {
                             MaterialPageRoute(builder: (_) => TopicDetailPage(post: post)),
                           );
                         },
+                        onLikeSuccess: _refresh,
                       ),
                     ),
                 ],
@@ -309,10 +310,17 @@ class CommunityComposer extends StatelessWidget {
 }
 
 class CommunityMasonry extends StatelessWidget {
-  const CommunityMasonry({super.key, required this.posts, required this.onTap});
+  const CommunityMasonry({
+    super.key,
+    required this.posts,
+    required this.onTap,
+    this.onLikeSuccess,
+  });
 
   final List<CommunityPost> posts;
   final ValueChanged<CommunityPost> onTap;
+  /// 点赞/取消点赞成功后回调（如刷新列表）
+  final VoidCallback? onLikeSuccess;
 
   @override
   Widget build(BuildContext context) {
@@ -337,6 +345,7 @@ class CommunityMasonry extends StatelessWidget {
                     child: TopicPostCard(
                       data: post,
                       onTap: () => onTap(post),
+                      onLikePressed: onLikeSuccess,
                     ),
                   ),
                 )
@@ -353,6 +362,7 @@ class CommunityMasonry extends StatelessWidget {
                     child: TopicPostCard(
                       data: post,
                       onTap: () => onTap(post),
+                      onLikePressed: onLikeSuccess,
                     ),
                   ),
                 )
@@ -365,10 +375,34 @@ class CommunityMasonry extends StatelessWidget {
 }
 
 class TopicPostCard extends StatelessWidget {
-  const TopicPostCard({super.key, required this.data, required this.onTap});
+  const TopicPostCard({
+    super.key,
+    required this.data,
+    required this.onTap,
+    this.onLikePressed,
+  });
 
   final CommunityPost data;
   final VoidCallback onTap;
+  /// 点赞/取消点赞成功后调用（用于刷新列表）
+  final VoidCallback? onLikePressed;
+
+  Future<void> _onLikeTap(BuildContext context) async {
+    if (ProfileStore.authToken == null || ProfileStore.authToken!.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('请先登录后再点赞')),
+        );
+      }
+      return;
+    }
+    final newCount = data.likedByMe
+        ? await CommunityDataRepository.unlikeTopic(data.id)
+        : await CommunityDataRepository.likeTopic(data.id);
+    if (newCount != null && context.mounted) {
+      onLikePressed?.call();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -442,8 +476,25 @@ class TopicPostCard extends StatelessWidget {
               children: [
                 const Icon(Icons.local_offer_rounded, size: 18),
                 Text(data.circle),
-                const Icon(Icons.favorite_border_rounded, size: 18),
-                Text('${data.likes}'),
+                GestureDetector(
+                  onTap: () => _onLikeTap(context),
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          data.likedByMe ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                          size: 18,
+                          color: data.likedByMe ? Colors.red : null,
+                        ),
+                        const SizedBox(width: 4),
+                        Text('${data.likes}'),
+                      ],
+                    ),
+                  ),
+                ),
                 const Icon(Icons.chat_bubble_outline_rounded, size: 18),
                 Text('${data.comments}'),
               ],
@@ -452,7 +503,7 @@ class TopicPostCard extends StatelessWidget {
             Align(
               alignment: Alignment.centerRight,
               child: TextButton.icon(
-                onPressed: () => showCommentSheet(context),
+                onPressed: () => onTap(),
                 icon: const Icon(Icons.chat_bubble_outline_rounded, size: 16),
                 label: const Text('评论'),
               ),
@@ -790,6 +841,7 @@ class _CircleHomePageState extends State<CircleHomePage> {
                                   onTap: () => Navigator.of(context).push(
                                     MaterialPageRoute(builder: (_) => TopicDetailPage(post: post)),
                                   ),
+                                  onLikePressed: _refreshTopics,
                                 ),
                               ),
                             )
@@ -806,176 +858,292 @@ class _CircleHomePageState extends State<CircleHomePage> {
   }
 }
 
-class TopicDetailPage extends StatelessWidget {
+class TopicDetailPage extends StatefulWidget {
   const TopicDetailPage({super.key, required this.post});
 
   final CommunityPost post;
 
   @override
+  State<TopicDetailPage> createState() => _TopicDetailPageState();
+}
+
+class _TopicDetailPageState extends State<TopicDetailPage> {
+  CommunityPost get post => _post;
+  late CommunityPost _post;
+  List<CommunityComment> _comments = [];
+  bool _loading = true;
+  bool _sendingComment = false;
+  final TextEditingController _commentController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _post = widget.post;
+    _loadDetail();
+  }
+
+  @override
+  void dispose() {
+    _commentController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadDetail() async {
+    final result = await CommunityDataRepository.loadTopicDetail(_post.id);
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      if (result != null) {
+        _post = result.post;
+        _comments = result.comments;
+      }
+    });
+  }
+
+  Future<void> _onLikeTap() async {
+    if (ProfileStore.authToken == null || ProfileStore.authToken!.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('请先登录后再点赞')),
+        );
+      }
+      return;
+    }
+    final newCount = _post.likedByMe
+        ? await CommunityDataRepository.unlikeTopic(_post.id)
+        : await CommunityDataRepository.likeTopic(_post.id);
+    if (newCount != null && mounted) {
+      setState(() {
+        _post = _post.copyWith(
+          likes: newCount,
+          likedByMe: !_post.likedByMe,
+        );
+      });
+    }
+  }
+
+  Future<void> _submitComment() async {
+    final text = _commentController.text.trim();
+    if (text.isEmpty) return;
+    if (ProfileStore.authToken == null || ProfileStore.authToken!.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('请先登录后再评论')),
+        );
+      }
+      return;
+    }
+    setState(() => _sendingComment = true);
+    final newComment = await CommunityDataRepository.addTopicComment(_post.id, text);
+    if (!mounted) return;
+    setState(() => _sendingComment = false);
+    if (newComment != null) {
+      _commentController.clear();
+      setState(() {
+        _comments = [newComment, ..._comments];
+        _post = _post.copyWith(comments: _post.comments + 1);
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final TextEditingController commentController = TextEditingController();
     return Scaffold(
       body: Stack(
         children: [
           const StarryBackground(),
           SafeArea(
-            child: ValueListenableBuilder<Map<String, List<CommunityComment>>>(
-              valueListenable: CommunityStore.comments,
-              builder: (context, commentMap, _) {
-                final list = commentMap[post.id] ?? const [];
-                return ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-                  children: [
-                    Row(
-                      children: [
-                        IconButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          icon: const Icon(Icons.arrow_back_rounded),
-                        ),
-                        const SizedBox(width: 6),
-                        Text('话题详情', style: Theme.of(context).textTheme.headlineLarge),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(22),
-                        border: Border.all(color: post.accent.withOpacity(0.6)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : ListView(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                    children: [
+                      Row(
                         children: [
-                          Text(post.title, style: Theme.of(context).textTheme.titleLarge),
-                          const SizedBox(height: 8),
-                          Text('来自 ${post.circle} 圈 · ${post.timeLabel}'),
-                          const SizedBox(height: 12),
-                          Text(post.content),
-                          if (post.imageBase64 != null) ...[
-                            const SizedBox(height: 10),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(16),
-                              child: Image.memory(
-                                base64Decode(post.imageBase64!),
-                                height: 160,
-                                width: double.infinity,
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                          ],
+                          IconButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(Icons.arrow_back_rounded),
+                          ),
+                          const SizedBox(width: 6),
+                          Text('话题详情', style: Theme.of(context).textTheme.headlineLarge),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text('评论', style: Theme.of(context).textTheme.titleLarge),
-                    const SizedBox(height: 10),
-                    if (list.isEmpty)
-                      const EmptyStateCard()
-                    else
-                      Column(
-                        children: list
-                            .map(
-                              (comment) => Container(
-                                margin: const EdgeInsets.only(bottom: 10),
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(color: const Color(0xFFE9E0C9)),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(color: _post.accent.withOpacity(0.6)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(_post.title, style: Theme.of(context).textTheme.titleLarge),
+                            const SizedBox(height: 8),
+                            Text('来自 ${_post.circle} 圈 · ${_post.timeLabel}'),
+                            const SizedBox(height: 12),
+                            Text(_post.content),
+                            if (_post.imageUrl != null) ...[
+                              const SizedBox(height: 10),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(16),
+                                child: Image.network(
+                                  _post.imageUrl!,
+                                  height: 160,
+                                  width: double.infinity,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => const SizedBox(height: 160),
                                 ),
+                              ),
+                            ] else if (_post.imageBase64 != null) ...[
+                              const SizedBox(height: 10),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(16),
+                                child: Image.memory(
+                                  base64Decode(_post.imageBase64!),
+                                  height: 160,
+                                  width: double.infinity,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 12),
+                            GestureDetector(
+                              onTap: _onLikeTap,
+                              behavior: HitTestBehavior.opaque,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 4),
                                 child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    CircleAvatar(
-                                      radius: 16,
-                                      backgroundColor: post.accent.withOpacity(0.3),
-                                      child: const Icon(Icons.face_rounded, size: 18, color: Colors.white),
+                                    Icon(
+                                      _post.likedByMe ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                                      size: 20,
+                                      color: _post.likedByMe ? Colors.red : null,
                                     ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            comment.author,
-                                            style: const TextStyle(fontWeight: FontWeight.w700),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(comment.content),
-                                          const SizedBox(height: 4),
-                                          Text(comment.timeLabel, style: const TextStyle(fontSize: 11, color: Color(0xFF8A8370))),
-                                        ],
-                                      ),
-                                    ),
+                                    const SizedBox(width: 6),
+                                    Text('${_post.likes}'),
+                                    const SizedBox(width: 16),
+                                    const Icon(Icons.chat_bubble_outline_rounded, size: 20),
+                                    const SizedBox(width: 6),
+                                    Text('${_post.comments}'),
                                   ],
                                 ),
                               ),
-                            )
-                            .toList(),
+                            ),
+                          ],
+                        ),
                       ),
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFFE9E0C9)),
+                      const SizedBox(height: 16),
+                      Text('评论', style: Theme.of(context).textTheme.titleLarge),
+                      const SizedBox(height: 10),
+                      if (_comments.isEmpty)
+                        const EmptyStateCard()
+                      else
+                        Column(
+                          children: _comments
+                              .map(
+                                (comment) => Container(
+                                  margin: const EdgeInsets.only(bottom: 10),
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: const Color(0xFFE9E0C9)),
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 16,
+                                        backgroundColor: _post.accent.withOpacity(0.3),
+                                        child: const Icon(Icons.face_rounded, size: 18, color: Colors.white),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              comment.author,
+                                              style: const TextStyle(fontWeight: FontWeight.w700),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(comment.content),
+                                            const SizedBox(height: 4),
+                                            Text(comment.timeLabel, style: const TextStyle(fontSize: 11, color: Color(0xFF8A8370))),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                        ),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFFE9E0C9)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('写评论', style: TextStyle(fontWeight: FontWeight.w700)),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: _commentController,
+                              minLines: 2,
+                              maxLines: 4,
+                              decoration: InputDecoration(
+                                hintText: '说点什么吧…',
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: ElevatedButton(
+                                onPressed: _sendingComment
+                                    ? null
+                                    : _submitComment,
+                                child: _sendingComment
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      )
+                                    : const Text('发布评论'),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      const SizedBox(height: 12),
+                      Row(
                         children: [
-                          const Text('写评论', style: TextStyle(fontWeight: FontWeight.w700)),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: commentController,
-                            minLines: 2,
-                            maxLines: 4,
-                            decoration: InputDecoration(
-                              hintText: '说点什么吧…',
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: ElevatedButton(
-                              onPressed: () {
-                                final text = commentController.text.trim();
-                                if (text.isEmpty) return;
-                                CommunityStore.addComment(post.id, text);
-                                commentController.clear();
-                              },
-                              child: const Text('发布评论'),
-                            ),
+                          TextButton(
+                            onPressed: () {
+                              final cid = _post.communityId ?? '';
+                              if (cid.isEmpty) return;
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => CircleHomePage(
+                                    circleId: cid,
+                                    circleName: _post.circle,
+                                  ),
+                                ),
+                              );
+                            },
+                            child: const Text('进入圈子'),
                           ),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        TextButton(
-                          onPressed: () {
-                            final cid = post.communityId ?? '';
-                            if (cid.isEmpty) return;
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => CircleHomePage(
-                                  circleId: cid,
-                                  circleName: post.circle,
-                                ),
-                              ),
-                            );
-                          },
-                          child: const Text('进入圈子'),
-                        ),
-                      ],
-                    ),
-                  ],
-                );
-              },
-            ),
+                    ],
+                  ),
           ),
         ],
       ),

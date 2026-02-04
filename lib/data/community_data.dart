@@ -18,6 +18,7 @@ class CommunityPost {
     this.imageBase64,
     this.imageUrl,
     this.communityId,
+    this.likedByMe = false,
   });
 
   final String id;
@@ -34,6 +35,8 @@ class CommunityPost {
   final String? imageUrl;
   /// 所属社群 id，用于跳转圈子页
   final String? communityId;
+  /// 当前用户是否已点赞（依赖登录态）
+  final bool likedByMe;
 
   factory CommunityPost.fromJson(Map<String, dynamic> json) {
     final circle = json['circle'] as String? ?? '';
@@ -53,6 +56,41 @@ class CommunityPost {
       imageBase64: json['imageBase64'] as String?,
       imageUrl: json['imageUrl'] as String?,
       communityId: json['communityId'] as String?,
+      likedByMe: json['likedByMe'] == true,
+    );
+  }
+
+  CommunityPost copyWith({
+    String? id,
+    String? title,
+    String? summary,
+    String? content,
+    String? circle,
+    String? author,
+    String? timeLabel,
+    int? likes,
+    int? comments,
+    Color? accent,
+    String? imageBase64,
+    String? imageUrl,
+    String? communityId,
+    bool? likedByMe,
+  }) {
+    return CommunityPost(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      summary: summary ?? this.summary,
+      content: content ?? this.content,
+      circle: circle ?? this.circle,
+      author: author ?? this.author,
+      timeLabel: timeLabel ?? this.timeLabel,
+      likes: likes ?? this.likes,
+      comments: comments ?? this.comments,
+      accent: accent ?? this.accent,
+      imageBase64: imageBase64 ?? this.imageBase64,
+      imageUrl: imageUrl ?? this.imageUrl,
+      communityId: communityId ?? this.communityId,
+      likedByMe: likedByMe ?? this.likedByMe,
     );
   }
 
@@ -70,6 +108,7 @@ class CommunityPost {
         if (imageBase64 != null) 'imageBase64': imageBase64,
         if (imageUrl != null) 'imageUrl': imageUrl,
         if (communityId != null) 'communityId': communityId,
+        'likedByMe': likedByMe,
       };
 }
 

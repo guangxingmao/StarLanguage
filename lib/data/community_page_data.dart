@@ -58,9 +58,16 @@ class CommunityDataRepository {
     List<Topic> joined = [];
     List<CommunityPost> hotPosts = [];
 
-    // 今日热门话题（无需登录）
+    // 今日热门话题（带 token 时返回 likedByMe）
     try {
-      final resHot = await http.get(Uri.parse('$baseUrl/topics/hot'));
+      final headers = <String, String>{};
+      if (token != null && token.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $token';
+      }
+      final resHot = await http.get(
+        Uri.parse('$baseUrl/topics/hot'),
+        headers: headers.isEmpty ? null : headers,
+      );
       if (resHot.statusCode == 200) {
         final data = jsonDecode(resHot.body);
         if (data is List) {
@@ -183,11 +190,19 @@ class CommunityDataRepository {
     }
   }
 
-  /// 指定圈子下的所有话题
+  /// 指定圈子下的所有话题（带 token 时返回 likedByMe）
   static Future<List<CommunityPost>> loadCommunityTopics(String communityId) async {
     final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    final token = ProfileStore.authToken;
     try {
-      final res = await http.get(Uri.parse('$baseUrl/communities/$communityId/topics'));
+      final headers = <String, String>{};
+      if (token != null && token.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $token';
+      }
+      final res = await http.get(
+        Uri.parse('$baseUrl/communities/$communityId/topics'),
+        headers: headers.isEmpty ? null : headers,
+      );
       if (res.statusCode != 200) return [];
       final data = jsonDecode(res.body);
       if (data is! List) return [];
@@ -198,4 +213,100 @@ class CommunityDataRepository {
       return [];
     }
   }
+
+  /// 话题详情（含评论列表与 likedByMe）
+  static Future<TopicDetailResult?> loadTopicDetail(String topicId) async {
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    final token = ProfileStore.authToken;
+    try {
+      final headers = <String, String>{};
+      if (token != null && token.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $token';
+      }
+      final res = await http.get(
+        Uri.parse('$baseUrl/topics/$topicId'),
+        headers: headers.isEmpty ? null : headers,
+      );
+      if (res.statusCode != 200) return null;
+      final data = jsonDecode(res.body) as Map<String, dynamic>?;
+      if (data == null) return null;
+      final commentsList = data['comments'] as List<dynamic>? ?? [];
+      final comments = commentsList
+          .map((e) => CommunityComment.fromJson(e as Map<String, dynamic>))
+          .toList();
+      final post = CommunityPost.fromJson(data);
+      return TopicDetailResult(post: post, comments: comments);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 点赞话题（需登录）。成功返回最新 likes 数，失败返回 null
+  static Future<int?> likeTopic(String topicId) async {
+    final token = ProfileStore.authToken;
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    if (token == null || token.isEmpty) return null;
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/topics/$topicId/like'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (res.statusCode != 200) return null;
+      final data = jsonDecode(res.body) as Map<String, dynamic>?;
+      final likes = data?['likes'];
+      if (likes is num) return likes.toInt();
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 取消点赞（需登录）。成功返回最新 likes 数，失败返回 null
+  static Future<int?> unlikeTopic(String topicId) async {
+    final token = ProfileStore.authToken;
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    if (token == null || token.isEmpty) return null;
+    try {
+      final res = await http.delete(
+        Uri.parse('$baseUrl/topics/$topicId/like'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (res.statusCode != 200) return null;
+      final data = jsonDecode(res.body) as Map<String, dynamic>?;
+      final likes = data?['likes'];
+      if (likes is num) return likes.toInt();
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 发表评论（需登录）。成功返回新评论，失败返回 null
+  static Future<CommunityComment?> addTopicComment(String topicId, String content) async {
+    final token = ProfileStore.authToken;
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    if (token == null || token.isEmpty) return null;
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/topics/$topicId/comments'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'content': content}),
+      );
+      if (res.statusCode != 201) return null;
+      final data = jsonDecode(res.body) as Map<String, dynamic>?;
+      return data != null ? CommunityComment.fromJson(data) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
+/// 话题详情接口返回：帖子 + 评论列表
+class TopicDetailResult {
+  const TopicDetailResult({required this.post, required this.comments});
+  final CommunityPost post;
+  final List<CommunityComment> comments;
 }
