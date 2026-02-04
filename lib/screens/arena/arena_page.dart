@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -992,26 +993,40 @@ class _LanDuelSheet extends StatefulWidget {
 
 class _LanDuelSheetState extends State<_LanDuelSheet> {
   final TextEditingController _ipController = TextEditingController();
-  final TextEditingController _relayController = TextEditingController(text: 'http://localhost:3002');
-  final TextEditingController _roomController = TextEditingController();
   LanDuelHost? _host;
   DuelConnection? _connection;
   String _status = '请选择创建或加入';
   int? _port;
   bool _hosting = false;
   bool _joining = false;
-  bool _useRelay = false;
-  String? _roomId;
   List<String> _localIps = const [];
 
   @override
   void dispose() {
     _ipController.dispose();
-    _relayController.dispose();
-    _roomController.dispose();
     _host?.close();
     _connection?.close();
     super.dispose();
+  }
+
+  /// 单次订阅等待第一条指定 type 的消息，避免 firstWhere 触发的 stream 绑定错误
+  Future<Map<String, dynamic>?> _waitForFirstMessage(DuelConnection conn, String type) async {
+    final completer = Completer<Map<String, dynamic>?>();
+    StreamSubscription<Map<String, dynamic>>? sub;
+    sub = conn.messages.listen((msg) {
+      if (msg['type'] == type && !completer.isCompleted) {
+        sub?.cancel();
+        completer.complete(msg as Map<String, dynamic>);
+      }
+    });
+    return completer.future.timeout(
+      const Duration(seconds: 60),
+      onTimeout: () {
+        sub?.cancel();
+        if (!completer.isCompleted) completer.complete(null);
+        return null;
+      },
+    );
   }
 
   Future<void> _startHost() async {
@@ -1020,49 +1035,27 @@ class _LanDuelSheetState extends State<_LanDuelSheet> {
       _status = '正在创建房间…';
     });
     try {
-      if (_useRelay) {
-        final room = _roomController.text.trim().isEmpty
-            ? _generateRoomCode()
-            : _roomController.text.trim();
-        _roomId = room;
-        final client = RelayDuelClient();
-        final conn = await client.connect(_relayController.text.trim());
-        _connection = conn;
-        conn.send({'type': 'host', 'room': room});
-        setState(() => _status = '中继房间已创建，等待加入… 房间号：$room');
-        final join = await conn.messages.firstWhere((msg) => msg['type'] == 'join');
-        if (!mounted) return;
-        final accept = await _confirmJoin(join['name']?.toString() ?? '对手');
-        if (!accept) {
-          _send(conn, {'type': 'deny'});
-          conn.close();
-          setState(() => _status = '已拒绝对战请求');
-          return;
-        }
-        _send(conn, {'type': 'accept'});
-        _startNetworkDuel(conn);
-      } else {
-        _host = LanDuelHost();
-        _port = await _host!.start();
-        _localIps = await _host!.localIps();
-        setState(() {
-          _status = '等待对方连接…';
-        });
-        final conn = await _host!.waitForClient();
-        _connection = conn;
-        final remote = conn.messages.firstWhere((msg) => msg['type'] == 'join');
-        final join = await remote;
-        if (!mounted) return;
-        final accept = await _confirmJoin(join['name']?.toString() ?? '对手');
-        if (!accept) {
-          _send(conn, {'type': 'deny'});
-          conn.close();
-          setState(() => _status = '已拒绝对战请求');
-          return;
-        }
-        _send(conn, {'type': 'accept'});
-        _startNetworkDuel(conn);
+      _host = LanDuelHost();
+      _port = await _host!.start();
+      _localIps = await _host!.localIps();
+      setState(() => _status = '等待对方连接…');
+      final conn = await _host!.waitForClient();
+      _connection = conn;
+      final join = await _waitForFirstMessage(conn, 'join');
+      if (!mounted) return;
+      if (join == null) {
+        setState(() => _status = '等待对方加入超时');
+        return;
       }
+      final accept = await _confirmJoin(join['name']?.toString() ?? '对手');
+      if (!accept) {
+        conn.send({'type': 'deny'});
+        conn.close();
+        setState(() => _status = '已拒绝对战请求');
+        return;
+      }
+      conn.send({'type': 'accept'});
+      _startNetworkDuel(conn);
     } catch (e) {
       setState(() => _status = '创建失败：$e');
     }
@@ -1070,37 +1063,20 @@ class _LanDuelSheetState extends State<_LanDuelSheet> {
 
   Future<void> _joinHost() async {
     final ip = _ipController.text.trim();
-    final room = _roomController.text.trim();
-    if (_useRelay) {
-      if (_relayController.text.trim().isEmpty || room.isEmpty) return;
-    } else {
-      if (ip.isEmpty) return;
-    }
+    if (ip.isEmpty) return;
     setState(() {
       _joining = true;
       _status = '正在连接…';
     });
     try {
-      final DuelConnection conn;
-      if (_useRelay) {
-        final client = RelayDuelClient();
-        conn = await client.connect(_relayController.text.trim());
-        _roomId = room;
-        conn.send({'type': 'join', 'name': '星知玩家', 'room': room});
-      } else {
-        final client = LanDuelClient();
-        conn = await client.connect(ip);
-        conn.send({'type': 'join', 'name': '星知玩家'});
-      }
+      final client = LanDuelClient();
+      final conn = await client.connect(ip);
       _connection = conn;
+      conn.send({'type': 'join', 'name': '星知玩家'});
       setState(() => _status = '等待对方确认…');
       await for (final msg in conn.messages) {
         if (msg['type'] == 'accept') {
           setState(() => _status = '已通过，等待开始…');
-        }
-        if (msg['type'] == 'room_not_found') {
-          setState(() => _status = '房间不存在');
-          break;
         }
         if (msg['type'] == 'start') {
           if (!mounted) return;
@@ -1138,7 +1114,7 @@ class _LanDuelSheetState extends State<_LanDuelSheet> {
   void _startNetworkDuel(DuelConnection connection) {
     final seed = DateTime.now().millisecondsSinceEpoch % 1000000;
     final count = 10;
-    _send(connection, {
+    connection.send({
       'type': 'start',
       'topic': widget.topic,
       'subtopic': widget.subtopic,
@@ -1156,7 +1132,7 @@ class _LanDuelSheetState extends State<_LanDuelSheet> {
           seed: seed,
           count: count,
           isHost: true,
-          room: _roomId,
+          room: null,
         ),
       ),
     );
@@ -1178,22 +1154,10 @@ class _LanDuelSheetState extends State<_LanDuelSheet> {
           seed: seed,
           count: count,
           isHost: false,
-          room: _roomId,
+          room: null,
         ),
       ),
     );
-  }
-
-  void _send(DuelConnection connection, Map<String, dynamic> data) {
-    if (_roomId != null) {
-      data = {...data, 'room': _roomId};
-    }
-    connection.send(data);
-  }
-
-  String _generateRoomCode() {
-    final rng = Random();
-    return (rng.nextInt(9000) + 1000).toString();
   }
 
   @override
@@ -1214,17 +1178,6 @@ class _LanDuelSheetState extends State<_LanDuelSheet> {
             const Text('局域网对战', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
             const SizedBox(height: 12),
             Text('当前主题：${widget.topic} · ${widget.subtopic}'),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Text('使用中继服务'),
-                const Spacer(),
-                Switch(
-                  value: _useRelay,
-                  onChanged: (value) => setState(() => _useRelay = value),
-                ),
-              ],
-            ),
             const SizedBox(height: 12),
             Row(
               children: [
@@ -1244,33 +1197,13 @@ class _LanDuelSheetState extends State<_LanDuelSheet> {
               ],
             ),
             const SizedBox(height: 12),
-            if (_useRelay) ...[
-              TextField(
-                controller: _relayController,
-                decoration: InputDecoration(
-                  hintText: '中继地址（如 http://192.168.1.10:3002）',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
+            TextField(
+              controller: _ipController,
+              decoration: InputDecoration(
+                hintText: '输入对方 IP（如 192.168.1.8）',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _roomController,
-                decoration: InputDecoration(
-                  hintText: '房间号（由房主提供）',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-              const SizedBox(height: 8),
-              if (_roomId != null) Text('房间号：$_roomId'),
-            ] else ...[
-              TextField(
-                controller: _ipController,
-                decoration: InputDecoration(
-                  hintText: '输入对方 IP（如 192.168.1.8）',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ],
+            ),
             const SizedBox(height: 10),
             if (_port != null) Text('端口：$_port'),
             if (ips.isNotEmpty) Text('本机 IP：${ips.join(' / ')}'),
@@ -1358,14 +1291,14 @@ class ArenaHero extends StatelessWidget {
                     Expanded(
                       child: ElevatedButton(
                         onPressed: onStart,
-                        child: const Text('单人挑战'),
+                        child: const Text('单人'),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: OutlinedButton(
                         onPressed: onDuel,
-                        child: const Text('局域网对战'),
+                        child: const Text('局域网'),
                       ),
                     ),
                   ],

@@ -92,18 +92,22 @@ class LanDuelPage extends StatefulWidget {
 
 class _LanDuelPageState extends State<LanDuelPage> {
   static const int _secondsPerQuestion = 12;
+  static const int _waitOpponentSeconds = 60;
   late final List<Question> _questions;
   Timer? _timer;
   StreamSubscription<Map<String, dynamic>>? _sub;
   int _index = 0;
   int _score = 0;
   int _opponentScore = 0;
+  int _opponentCorrect = 0;
+  int _opponentTotal = 0;
   int _correct = 0;
   late final DateTime _quizStartTime;
   int _remaining = _secondsPerQuestion;
   bool _answered = false;
   String? _selected;
-  int _opponentIndex = 0;
+  Completer<void>? _opponentFinishCompleter;
+  bool _waitingOpponent = false;
 
   @override
   void initState() {
@@ -125,28 +129,29 @@ class _LanDuelPageState extends State<LanDuelPage> {
     super.dispose();
   }
 
+  static int _parseInt(dynamic v, int fallback) {
+    if (v == null) return fallback;
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse(v.toString()) ?? fallback;
+  }
+
   void _listen() {
     _sub = widget.connection.messages.listen((msg) {
-      switch (msg['type']) {
-        case 'progress':
-          setState(() {
-            _opponentScore = (msg['score'] as num?)?.toInt() ?? _opponentScore;
-            _opponentIndex = (msg['index'] as num?)?.toInt() ?? _opponentIndex;
-          });
-          break;
-        case 'finish':
-          setState(() {
-            _opponentScore = (msg['score'] as num?)?.toInt() ?? _opponentScore;
-            _opponentIndex = _questions.length;
-          });
-          break;
-        case 'start':
-          if (!widget.isHost) {
-            // handled in join flow, ignore if duplicated
-          }
-          break;
-        default:
-          break;
+      final type = msg['type']?.toString();
+      if (type != 'finish') return;
+      final score = _parseInt(msg['score'] ?? msg['Score'], _opponentScore);
+      final correctCount = _parseInt(msg['correctCount'] ?? msg['correct_count'], _opponentCorrect);
+      final total = _parseInt(msg['total'] ?? msg['Total'], _opponentTotal);
+      if (!mounted) return;
+      setState(() {
+        _opponentScore = score;
+        _opponentCorrect = correctCount;
+        _opponentTotal = total;
+      });
+      if (_opponentFinishCompleter != null && !_opponentFinishCompleter!.isCompleted) {
+        _opponentFinishCompleter!.complete();
+        _opponentFinishCompleter = null;
       }
     });
   }
@@ -200,37 +205,76 @@ class _LanDuelPageState extends State<LanDuelPage> {
     });
   }
 
+  void _goToResult(int totalSeconds) {
+    final oppScore = _opponentScore;
+    final oppCorrect = _opponentCorrect;
+    final oppTotal = _opponentTotal > 0 ? _opponentTotal : _questions.length;
+    final hasOpponentResult = _opponentTotal > 0;
+    _opponentFinishCompleter = null;
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => LanDuelResultPage(
+          myScore: _score,
+          opponentScore: oppScore,
+          myCorrect: _correct,
+          myTotal: _questions.length,
+          opponentCorrect: oppCorrect,
+          opponentTotal: oppTotal,
+          hasOpponentResult: hasOpponentResult,
+          timeUsed: totalSeconds,
+        ),
+      ),
+    );
+  }
+
+  void _skipWait() {
+    if (_opponentFinishCompleter != null && !_opponentFinishCompleter!.isCompleted) {
+      _opponentFinishCompleter!.complete();
+      _opponentFinishCompleter = null;
+    }
+  }
+
   void _next() async {
     final done = _index + 1 >= _questions.length;
     if (done) {
       final totalSeconds = DateTime.now().difference(_quizStartTime).inSeconds;
-      _send({'type': 'finish', 'score': _score});
+      final finishPayload = {
+        'type': 'finish',
+        'score': _score,
+        'correctCount': _correct,
+        'total': _questions.length,
+      };
+      _send(finishPayload);
+      for (final delay in [100, 400, 1000]) {
+        await Future.delayed(Duration(milliseconds: delay));
+        if (!mounted) return;
+        _send(finishPayload);
+      }
       await ArenaPkRepository.submitScore(_score);
       if (mounted) await ArenaStatsStore.syncFromServer();
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => QuizResultPage(
-            score: _score,
-            total: _questions.length,
-            correct: _correct,
-            timeUsed: totalSeconds,
-            maxStreak: 0,
-            accuracyBonus: 0,
-          ),
-        ),
-      );
+      if (_opponentTotal == 0) {
+        _opponentFinishCompleter = Completer<void>();
+        setState(() => _waitingOpponent = true);
+        try {
+          await _opponentFinishCompleter!.future.timeout(
+            const Duration(seconds: _waitOpponentSeconds),
+            onTimeout: () {},
+          );
+        } catch (_) {}
+        if (!mounted) return;
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (!mounted) return;
+      }
+      setState(() => _waitingOpponent = false);
+      _goToResult(totalSeconds);
       return;
     }
     setState(() {
       _index += 1;
       _answered = false;
       _selected = null;
-    });
-    _send({
-      'type': 'progress',
-      'score': _score,
-      'index': _index,
     });
     _startTimer();
   }
@@ -244,6 +288,50 @@ class _LanDuelPageState extends State<LanDuelPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_waitingOpponent) {
+      return Scaffold(
+        body: Stack(
+          children: [
+            const StarryBackground(),
+            SafeArea(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CircularProgressIndicator(color: Color(0xFFFF9F1C)),
+                      const SizedBox(height: 24),
+                      Text(
+                        '等待对手提交…',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey[800],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '对方交卷后会自动显示结果，也可先跳过',
+                        style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 28),
+                      TextButton.icon(
+                        onPressed: () {
+                          _skipWait();
+                        },
+                        icon: const Icon(Icons.skip_next_rounded, size: 20),
+                        label: const Text('跳过等待'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     final q = _questions[_index];
     return Scaffold(
       body: Stack(
@@ -263,10 +351,6 @@ class _LanDuelPageState extends State<LanDuelPage> {
                       ),
                       const SizedBox(width: 6),
                       Text('局域网对战', style: Theme.of(context).textTheme.headlineMedium),
-                      const Spacer(),
-                      _InfoChip(label: '我方', value: '$_score'),
-                      const SizedBox(width: 6),
-                      _InfoChip(label: '对手', value: '$_opponentScore'),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -284,21 +368,13 @@ class _LanDuelPageState extends State<LanDuelPage> {
                       Text('${_index + 1}/${_questions.length}'),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: LinearProgressIndicator(
-                          value: (_opponentIndex + 1) / _questions.length,
-                          minHeight: 6,
-                          backgroundColor: const Color(0xFFE8F3FF),
-                          valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF5DADE2)),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Text('对手 ${_opponentIndex + 1}/${_questions.length}'),
-                    ],
-                  ),
+                  if (_index > 0 || _answered) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      '当前正确率：${_index + (_answered ? 1 : 0) > 0 ? (100 * _correct / (_index + (_answered ? 1 : 0))).round() : 0}%',
+                      style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
@@ -569,6 +645,13 @@ class _DuelQuizPageState extends State<DuelQuizPage> {
                       Text('${_index + 1}/${_questions.length}'),
                     ],
                   ),
+                  if (_index > 0 || _answered) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      '当前正确率：${(_index + (_answered ? 1 : 0)) > 0 ? (100 * _correct / (_index + (_answered ? 1 : 0))).round() : 0}%',
+                      style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
@@ -879,6 +962,13 @@ class _QuizPageState extends State<QuizPage> {
                       Text('${_index + 1}/${_questions.length}'),
                     ],
                   ),
+                  if (_index > 0 || _answered) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      '当前正确率：${(_index + (_answered ? 1 : 0)) > 0 ? (100 * _correct / (_index + (_answered ? 1 : 0))).round() : 0}%',
+                      style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   Container(
                     padding: const EdgeInsets.all(16),
@@ -965,6 +1055,117 @@ class _QuizPageState extends State<QuizPage> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 局域网对战结果页：仅显示胜负、我方得分、对手得分与对手答题结果
+class LanDuelResultPage extends StatelessWidget {
+  const LanDuelResultPage({
+    super.key,
+    required this.myScore,
+    required this.opponentScore,
+    required this.myCorrect,
+    required this.myTotal,
+    required this.opponentCorrect,
+    required this.opponentTotal,
+    required this.hasOpponentResult,
+    required this.timeUsed,
+  });
+
+  final int myScore;
+  final int opponentScore;
+  final int myCorrect;
+  final int myTotal;
+  final int opponentCorrect;
+  final int opponentTotal;
+  /// 是否已收到对手的 finish 消息（未超时）
+  final bool hasOpponentResult;
+  final int timeUsed;
+
+  bool get _isWin => myScore > opponentScore;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Stack(
+        children: [
+          const StarryBackground(),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _isWin ? '胜利' : '失败',
+                    style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: _isWin ? const Color(0xFF2E7D32) : const Color(0xFFC62828),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFFFD166)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.06),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _row('我的得分', '$myScore'),
+                        const SizedBox(height: 12),
+                        _row('对手得分', hasOpponentResult ? '$opponentScore' : '--'),
+                        const SizedBox(height: 12),
+                        _row(
+                          '对手答题',
+                          hasOpponentResult
+                              ? '$opponentCorrect / $opponentTotal 题'
+                              : '对手未完成',
+                        ),
+                        const SizedBox(height: 12),
+                        _row('用时', '${timeUsed}s'),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'PK 分数已计入在线 PK 排行榜',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                  const Spacer(),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
+                      child: const Text('返回'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _row(String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 15)),
+        Text(value, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+      ],
     );
   }
 }

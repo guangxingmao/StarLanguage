@@ -17,7 +17,16 @@ class LanDuelHost {
     if (_server == null) {
       throw StateError('Server not started');
     }
-    _client = await _server!.first;
+    final completer = Completer<Socket>();
+    StreamSubscription<Socket>? sub;
+    sub = _server!.listen((Socket socket) {
+      if (!completer.isCompleted) {
+        sub?.cancel();
+        completer.complete(socket);
+      }
+    });
+    _client = await completer.future;
+    _client!.setOption(SocketOption.tcpNoDelay, true);
     return LanDuelConnection._(_client!);
   }
 
@@ -43,6 +52,7 @@ class LanDuelHost {
 class LanDuelClient {
   Future<LanDuelConnection> connect(String host, {int port = 36666}) async {
     final socket = await Socket.connect(host, port, timeout: const Duration(seconds: 6));
+    socket.setOption(SocketOption.tcpNoDelay, true);
     return LanDuelConnection._(socket);
   }
 }
@@ -63,7 +73,7 @@ class LanDuelConnection implements DuelConnection {
 
   final Socket _socket;
   late final StreamSubscription<String> _subscription;
-  final StreamController<Map<String, dynamic>> _controller = StreamController.broadcast();
+  final StreamController<Map<String, dynamic>> _controller = StreamController<Map<String, dynamic>>.broadcast();
 
   @override
   Stream<Map<String, dynamic>> get messages => _controller.stream;
