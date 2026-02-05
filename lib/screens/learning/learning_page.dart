@@ -9,6 +9,20 @@ import '../../data/demo_data.dart';
 import '../../widgets/starry_background.dart';
 import '../../widgets/reveal.dart';
 
+/// assets/images 下用于精选内容封面的图片（随机分配）
+const List<String> _coverImagePaths = [
+  'assets/images/img_01.jpg', 'assets/images/img_02.jpg', 'assets/images/img_03.jpg',
+  'assets/images/img_04.jpg', 'assets/images/img_05.jpg', 'assets/images/img_06.jpg',
+  'assets/images/img_07.jpg', 'assets/images/img_08.jpg', 'assets/images/img_09.jpg',
+  'assets/images/img_10.jpg', 'assets/images/img_11.jpg', 'assets/images/img_12.jpg',
+  'assets/images/img_13.jpg', 'assets/images/img_14.jpg', 'assets/images/img_15.jpg',
+  'assets/images/img_16.jpg', 'assets/images/img_17.jpg', 'assets/images/img_18.jpg',
+  'assets/images/img_19.jpg', 'assets/images/img_20.jpg', 'assets/images/img_21.jpg',
+  'assets/images/img_22.jpg', 'assets/images/img_23.jpg', 'assets/images/img_24.jpg',
+  'assets/images/img_25.jpg', 'assets/images/img_26.jpg', 'assets/images/img_27.jpg',
+  'assets/images/img_28.jpg', 'assets/images/img_29.jpg', 'assets/images/img_30.jpg',
+];
+
 /// 学习页：搜索、筛选、精选内容瀑布流
 class LearningPage extends StatefulWidget {
   const LearningPage({super.key});
@@ -98,7 +112,15 @@ class _LearningPageState extends State<LearningPage> {
                     delay: 120,
                     child: filtered.isEmpty
                         ? const EmptyStateCard()
-                        : ContentMasonry(contents: filtered),
+                        : ContentMasonry(
+                            contents: filtered.map((item) {
+                              final cover = item.imageUrl.isNotEmpty
+                                  ? item.imageUrl
+                                  : _coverImagePaths[
+                                      item.id.hashCode.abs() % _coverImagePaths.length];
+                              return item.copyWith(imageUrl: cover);
+                            }).toList(),
+                          ),
                   ),
                 ],
               );

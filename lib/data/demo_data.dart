@@ -93,6 +93,20 @@ class ContentItem {
         'url': url,
         'imageUrl': imageUrl,
       };
+
+  ContentItem copyWith({String? imageUrl}) => ContentItem(
+        id: id,
+        topic: topic,
+        title: title,
+        summary: summary,
+        tag: tag,
+        videoLabel: videoLabel,
+        accent: accent,
+        type: type,
+        source: source,
+        url: url,
+        imageUrl: imageUrl ?? this.imageUrl,
+      );
 }
 
 class Question {
@@ -207,7 +221,7 @@ class DemoData {
           type: 'video',
           source: 'B站',
           url: 'https://www.bilibili.com/video/BV1Fv411Y7f1/',
-          imageUrl: '',
+          imageUrl: 'assets/images/tang_img.jpg',
         ),
         ContentItem(
           id: 'c3',
