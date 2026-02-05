@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../data/growth_data.dart';
 import '../../data/learning_data.dart';
@@ -542,9 +543,20 @@ class ContentCard extends StatelessWidget {
     return InkWell(
       borderRadius: BorderRadius.circular(22),
       onTap: () async {
-        // 打卡：学习一个新知识点、观看视频或图文
         await GrowthDataRepository.setDailyTaskCompleted('school', true);
         await GrowthDataRepository.setDailyTaskCompleted('video', true);
+        if (item.title.contains('唐朝有多开放')) {
+          if (!context.mounted) return;
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => LocalVideoPage(
+                title: item.title,
+                assetPath: 'assets/videos/tang_open.mp4',
+              ),
+            ),
+          );
+          return;
+        }
         if (item.url.isNotEmpty) {
           final uri = Uri.tryParse(item.url);
           if (uri != null && await canLaunchUrl(uri)) {
@@ -719,6 +731,100 @@ class LearningIllustration extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// 本地视频播放页（用于「唐朝有多开放」等内嵌视频）
+class LocalVideoPage extends StatefulWidget {
+  const LocalVideoPage({super.key, required this.title, required this.assetPath});
+
+  final String title;
+  final String assetPath;
+
+  @override
+  State<LocalVideoPage> createState() => _LocalVideoPageState();
+}
+
+class _LocalVideoPageState extends State<LocalVideoPage> {
+  late VideoPlayerController _controller;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.asset(widget.assetPath);
+    _controller.initialize().then((_) {
+      if (mounted) setState(() {});
+      _controller.play();
+    }).catchError((Object e) {
+      if (mounted) setState(() => _error = e.toString());
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        title: Text(widget.title),
+        backgroundColor: Colors.black87,
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
+      body: _error != null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.videocam_off_rounded, size: 48, color: Colors.white54),
+                    const SizedBox(height: 16),
+                    Text(
+                      '无法加载本地视频',
+                      style: TextStyle(color: Colors.white70, fontSize: 16),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '请将视频文件放到 ${widget.assetPath}',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white54, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : Center(
+              child: AspectRatio(
+                aspectRatio: _controller.value.isInitialized
+                    ? _controller.value.aspectRatio
+                    : 16 / 9,
+                child: VideoPlayer(_controller),
+              ),
+            ),
+      floatingActionButton: _error == null && _controller.value.isInitialized
+          ? FloatingActionButton(
+              onPressed: () {
+                setState(() {
+                  _controller.value.isPlaying
+                      ? _controller.pause()
+                      : _controller.play();
+                });
+              },
+              child: Icon(
+                _controller.value.isInitialized && _controller.value.isPlaying
+                    ? Icons.pause_rounded
+                    : Icons.play_arrow_rounded,
+              ),
+            )
+          : null,
     );
   }
 }

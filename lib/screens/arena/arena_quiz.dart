@@ -363,7 +363,7 @@ class _LanDuelPageState extends State<LanDuelPage> {
                         icon: const Icon(Icons.close_rounded),
                       ),
                       const SizedBox(width: 6),
-                      Text('局域网对战', style: Theme.of(context).textTheme.headlineMedium),
+                      Text('在线PK', style: Theme.of(context).textTheme.headlineMedium),
                     ],
                   ),
                   const SizedBox(height: 8),

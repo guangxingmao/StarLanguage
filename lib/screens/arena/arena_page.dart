@@ -466,7 +466,7 @@ class _ArenaMyRankPageState extends State<_ArenaMyRankPage> {
                               ),
                               child: Center(
                                 child: Text(
-                                  '暂无挑战记录，去完成一次单人挑战或局域网对战吧～',
+                                  '暂无挑战记录，去完成一次单人挑战或在线PK吧～',
                                   style: TextStyle(color: Colors.grey[600], fontSize: 14),
                                 ),
                               ),
@@ -594,7 +594,7 @@ class _DuelHistoryTile extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Text('局域网对战 · ${summary.opponentName}', style: Theme.of(context).textTheme.titleSmall),
+                      Text('在线PK · ${summary.opponentName}', style: Theme.of(context).textTheme.titleSmall),
                       const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -1064,7 +1064,7 @@ class _ScoreLeaderboardDetailPageState extends State<ScoreLeaderboardDetailPage>
   }
 }
 
-/// 双人对战（服务器中转）：创建房间得房间号，对方输入房间号加入；无需局域网
+/// 双人对战（匹配机制）：点击「开始对战」自动匹配，两人差不多时间点击即配对，无需房间号
 class _ServerDuelSheet extends StatefulWidget {
   const _ServerDuelSheet({
     required this.topic,
@@ -1081,107 +1081,79 @@ class _ServerDuelSheet extends StatefulWidget {
 }
 
 class _ServerDuelSheetState extends State<_ServerDuelSheet> {
-  final TextEditingController _roomCodeController = TextEditingController();
   String _status = '';
   bool _loading = false;
-  String? _createdRoomId;
-  String? _createdSeed;
-  String? _createdCount;
+  bool _matching = false;
+  static const int _matchTimeoutSeconds = 30;
 
-  @override
-  void dispose() {
-    _roomCodeController.dispose();
-    super.dispose();
+  void _goToDuel(Map<String, dynamic> res) {
+    final roomId = res['roomId']?.toString() ?? '';
+    final topic = res['topic']?.toString() ?? widget.topic;
+    final subtopic = res['subtopic']?.toString() ?? widget.subtopic;
+    final seed = (res['seed'] is int) ? res['seed'] as int : (res['seed'] as num?)?.toInt() ?? 0;
+    final count = (res['count'] is int) ? res['count'] as int : (res['count'] as num?)?.toInt() ?? 10;
+    final isHost = res['isHost'] == true;
+    final opponentName = res['opponentName']?.toString() ?? '对手';
+    if (!mounted) return;
+    Navigator.of(context).pop();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ServerDuelPage(
+          roomId: roomId,
+          data: widget.data,
+          topic: topic,
+          subtopic: subtopic,
+          seed: seed,
+          count: count,
+          isHost: isHost,
+          opponentName: opponentName,
+        ),
+      ),
+    );
   }
 
-  Future<void> _createRoom() async {
+  Future<void> _startMatch() async {
     setState(() {
       _loading = true;
-      _status = '正在创建房间…';
+      _status = '正在匹配…';
     });
-    final res = await ArenaDuelRepository.createDuelRoom(
+    final res = await ArenaDuelRepository.matchDuel(
       topic: widget.topic,
       subtopic: widget.subtopic,
     );
     if (!mounted) return;
     setState(() => _loading = false);
     if (res == null) {
-      setState(() => _status = '创建失败，请检查网络或登录');
+      setState(() => _status = '匹配失败，请检查网络或登录');
       return;
     }
-    final roomId = res['roomId']?.toString() ?? '';
-    final seed = res['seed'];
-    final count = res['count'];
-    setState(() {
-      _createdRoomId = roomId;
-      _createdSeed = seed?.toString();
-      _createdCount = count?.toString();
-      _status = '房间已创建，请对方输入房间号加入';
-    });
-  }
-
-  Future<void> _joinRoom() async {
-    final code = _roomCodeController.text.trim();
-    if (code.isEmpty) {
-      setState(() => _status = '请输入 6 位房间号');
+    if (res['matched'] == true) {
+      _goToDuel(res);
       return;
     }
-    setState(() {
-      _loading = true;
-      _status = '正在加入…';
-    });
-    final res = await ArenaDuelRepository.joinDuelRoom(code);
-    if (!mounted) return;
-    setState(() => _loading = false);
-    if (res == null) {
-      setState(() => _status = '加入失败，房间不存在或已满');
-      return;
+    setState(() => _matching = true);
+    final deadline = DateTime.now().add(const Duration(seconds: _matchTimeoutSeconds));
+    while (mounted && DateTime.now().isBefore(deadline)) {
+      await Future.delayed(const Duration(milliseconds: 1500));
+      if (!mounted) break;
+      final pollRes = await ArenaDuelRepository.pollMatchStatus();
+      if (mounted && pollRes != null && pollRes['matched'] == true) {
+        setState(() => _matching = false);
+        _goToDuel(pollRes);
+        return;
+      }
     }
-    final topic = res['topic']?.toString() ?? widget.topic;
-    final subtopic = res['subtopic']?.toString() ?? widget.subtopic;
-    final seed = (res['seed'] is int) ? res['seed'] as int : (res['seed'] as num?)?.toInt() ?? 0;
-    final count = (res['count'] is int) ? res['count'] as int : (res['count'] as num?)?.toInt() ?? 10;
-    final hostName = res['hostName']?.toString() ?? '对手';
-    Navigator.of(context).pop();
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ServerDuelPage(
-          roomId: code,
-          data: widget.data,
-          topic: topic,
-          subtopic: subtopic,
-          seed: seed,
-          count: count,
-          isHost: false,
-          opponentName: hostName,
-        ),
-      ),
-    );
-  }
-
-  void _startAsHost() {
-    if (_createdRoomId == null || _createdSeed == null || _createdCount == null) return;
-    final seed = int.tryParse(_createdSeed!) ?? 0;
-    final count = int.tryParse(_createdCount!) ?? 10;
-    Navigator.of(context).pop();
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ServerDuelPage(
-          roomId: _createdRoomId!,
-          data: widget.data,
-          topic: widget.topic,
-          subtopic: widget.subtopic,
-          seed: seed,
-          count: count,
-          isHost: true,
-          opponentName: '对手',
-        ),
-      ),
-    );
+    if (mounted) {
+      setState(() {
+        _matching = false;
+        _status = '暂时没有对手，请稍后再试';
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final busy = _loading || _matching;
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
@@ -1197,66 +1169,20 @@ class _ServerDuelSheetState extends State<_ServerDuelSheet> {
             const Text('双人对战', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
             const SizedBox(height: 8),
             Text('当前主题：${widget.topic} · ${widget.subtopic}', style: TextStyle(fontSize: 13, color: Colors.grey[700])),
-            const SizedBox(height: 16),
-            if (_createdRoomId == null) ...[
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: _loading ? null : _createRoom,
-                      child: _loading ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('创建房间'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _loading ? null : _joinRoom,
-                      child: const Text('加入房间'),
-                    ),
-                  ),
-                ],
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: busy ? null : _startMatch,
+                child: busy ? const Text('匹配中…') : const Text('开始对战'),
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _roomCodeController,
-                decoration: InputDecoration(
-                  hintText: '输入 6 位房间号',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                keyboardType: TextInputType.number,
-                maxLength: 6,
-              ),
-            ] else ...[
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFF8ED),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFFFFD166)),
-                ),
-                child: Column(
-                  children: [
-                    const Text('房间号', style: TextStyle(fontSize: 12, color: Color(0xFF6F6B60))),
-                    const SizedBox(height: 6),
-                    Text(_createdRoomId!, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700, letterSpacing: 8)),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _startAsHost,
-                        child: const Text('开始对战'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+            ),
             if (_status.isNotEmpty) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               Text(_status, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
             ],
-            const SizedBox(height: 8),
-            const Text('提示：两台设备连接同一后端即可对战，对手成绩由服务器同步。', style: TextStyle(fontSize: 12, color: Color(0xFF9E9E9E))),
+            const SizedBox(height: 10),
+            const Text('两人差不多时间点击「开始对战」即可自动配对，无需房间号。', style: TextStyle(fontSize: 12, color: Color(0xFF9E9E9E))),
           ],
         ),
       ),
@@ -1344,7 +1270,7 @@ class ArenaHero extends StatelessWidget {
                     Expanded(
                       child: OutlinedButton(
                         onPressed: onDuel,
-                        child: const Text('局域网'),
+                        child: const Text('在线PK'),
                       ),
                     ),
                   ],

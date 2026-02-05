@@ -41,6 +41,7 @@ dependencies:
   http: ^1.2.2
   web_socket_channel: ^2.4.0
   url_launcher: ^6.2.5
+  video_player: ^2.9.2
 
 dev_dependencies:
   flutter_test:
@@ -73,6 +74,7 @@ flutter:
     - assets/data/demo.json
     - assets/images/
     - assets/illustrations/
+    - assets/videos/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

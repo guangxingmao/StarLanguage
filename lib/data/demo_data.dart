@@ -193,7 +193,7 @@ class DemoData {
           accent: Color(0xFFFFC857),
           type: 'video',
           source: '抖音',
-          url: '',
+          url: 'https://www.douyin.com/search/%E7%AF%AE%E7%90%83%E4%B8%BA%E4%BB%80%E4%B9%88%E5%88%86%E4%BA%94%E4%B8%AA%E4%BD%8D%E7%BD%AE?modal_id=7460904865921879350&type=general',
           imageUrl: '',
         ),
         ContentItem(
@@ -206,7 +206,7 @@ class DemoData {
           accent: Color(0xFF5DADE2),
           type: 'video',
           source: 'B站',
-          url: '',
+          url: 'https://www.bilibili.com/video/BV1Fv411Y7f1/',
           imageUrl: '',
         ),
         ContentItem(

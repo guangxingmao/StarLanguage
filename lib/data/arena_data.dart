@@ -601,7 +601,45 @@ class ArenaDuelRepository {
     }
   }
 
-  /// 服务器对战：创建房间
+  /// 服务器对战：开始匹配，两人差不多时间点击即可配对
+  static Future<Map<String, dynamic>?> matchDuel({String topic = '全部', String subtopic = '全部'}) async {
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    final token = ProfileStore.authToken;
+    if (token == null || token.isEmpty) return null;
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/arena/duel/match'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'topic': topic, 'subtopic': subtopic}),
+      );
+      if (res.statusCode != 200) return null;
+      return jsonDecode(res.body) as Map<String, dynamic>?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 服务器对战：轮询是否已匹配（等待中时调用）
+  static Future<Map<String, dynamic>?> pollMatchStatus() async {
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    final token = ProfileStore.authToken;
+    if (token == null || token.isEmpty) return null;
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/arena/duel/match'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (res.statusCode != 200) return null;
+      return jsonDecode(res.body) as Map<String, dynamic>?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 服务器对战：创建房间（保留，可选）
   static Future<Map<String, dynamic>?> createDuelRoom({String topic = '全部', String subtopic = '全部'}) async {
     final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
     final token = ProfileStore.authToken;

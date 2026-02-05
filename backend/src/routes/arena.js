@@ -6,10 +6,21 @@ const { evaluateArenaAchievements } = require('../services/arena_achievements');
 const duelRooms = new Map();
 const DUEL_ROOM_TTL_MS = 30 * 60 * 1000; // 30 分钟无活动可清理
 
+// 匹配队列：{ phone, name, topic, subtopic, createdAt }；先进入的优先被匹配
+let duelMatchQueue = [];
+// 已匹配但尚未轮询到的用户：phone -> { roomId, topic, subtopic, seed, count, opponentName, isHost }
+const duelPendingMatch = new Map();
+const MATCH_QUEUE_TTL_MS = 60 * 1000; // 队列中超过 60 秒未匹配则视为过期
+
 function randomRoomId() {
   let id = '';
   for (let i = 0; i < 6; i++) id += Math.floor(Math.random() * 10);
   return id;
+}
+
+function cleanMatchQueue() {
+  const now = Date.now();
+  duelMatchQueue = duelMatchQueue.filter((e) => now - e.createdAt < MATCH_QUEUE_TTL_MS);
 }
 
 function routes(app) {
@@ -192,8 +203,74 @@ function routes(app) {
     }
   });
 
-  // ---------- 服务器对战（双人通过房间码，不依赖局域网） ----------
-  // 创建对战房间，返回房间号
+  // ---------- 服务器对战（匹配 / 房间） ----------
+  // 开始匹配：两人差不多时间点「开始对战」即自动配对
+  app.post('/arena/duel/match', requireAuth, async (req, res) => {
+    const { phone } = req.auth;
+    const name = (req.auth && req.auth.name) ? String(req.auth.name) : '星知玩家';
+    const topic = (req.body && req.body.topic) ? String(req.body.topic).trim() : '全部';
+    const subtopic = (req.body && req.body.subtopic) ? String(req.body.subtopic).trim() : '全部';
+    cleanMatchQueue();
+    let other = null;
+    const idx = duelMatchQueue.findIndex((e) => e.phone !== phone);
+    if (idx >= 0) {
+      other = duelMatchQueue[idx];
+      duelMatchQueue.splice(idx, 1);
+    }
+    if (other) {
+      const seed = Math.abs((phone + other.phone + Date.now()).split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % 1000000;
+      const count = 10;
+      let roomId = randomRoomId();
+      while (duelRooms.has(roomId)) roomId = randomRoomId();
+      duelRooms.set(roomId, {
+        hostPhone: other.phone,
+        hostName: other.name,
+        guestPhone: phone,
+        guestName: name,
+        topic: other.topic,
+        subtopic: other.subtopic,
+        seed,
+        count,
+        hostResult: null,
+        guestResult: null,
+        createdAt: Date.now(),
+      });
+      duelPendingMatch.set(other.phone, {
+        roomId,
+        topic: other.topic,
+        subtopic: other.subtopic,
+        seed,
+        count,
+        opponentName: name,
+        isHost: true,
+      });
+      return res.json({
+        matched: true,
+        roomId,
+        topic: other.topic,
+        subtopic: other.subtopic,
+        seed,
+        count,
+        opponentName: other.name,
+        isHost: false,
+      });
+    }
+    duelMatchQueue.push({ phone, name, topic, subtopic, createdAt: Date.now() });
+    return res.json({ matched: false, waiting: true });
+  });
+
+  // 轮询是否已匹配（等待中的用户调用）
+  app.get('/arena/duel/match', requireAuth, async (req, res) => {
+    const { phone } = req.auth;
+    const pending = duelPendingMatch.get(phone);
+    if (pending) {
+      duelPendingMatch.delete(phone);
+      return res.json({ matched: true, ...pending });
+    }
+    return res.json({ matched: false });
+  });
+
+  // 创建对战房间，返回房间号（保留，可选使用）
   app.post('/arena/duel/room', requireAuth, async (req, res) => {
     const { phone } = req.auth;
     const name = (req.auth && req.auth.name) ? String(req.auth.name) : '房主';
@@ -263,11 +340,12 @@ function routes(app) {
       payload.opponentCorrect = oppResult.correctCount;
       payload.opponentTotal = oppResult.total;
       payload.opponentName = oppName || '对手';
+      duelRooms.delete(roomId);
     }
     return res.json(payload);
   });
 
-  // 提交本局结果；若双方都已提交则返回对手结果并写入对战记录
+  // 提交本局结果；若双方都已提交则返回对手结果并写入对战记录（房间保留供先提交者轮询，在其 GET 到结果后再删）
   app.post('/arena/duel/room/:roomId/submit', requireAuth, async (req, res) => {
     const { phone } = req.auth;
     const roomId = String(req.params.roomId || '').trim();
@@ -304,7 +382,6 @@ function routes(app) {
       opponentName: oppName || '对手',
       opponentPhone: oppPhone || '',
     };
-    if (oppResult) duelRooms.delete(roomId);
     return res.json(response);
   });
 
