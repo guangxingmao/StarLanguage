@@ -1072,6 +1072,374 @@ class _QuizPageState extends State<QuizPage> {
   }
 }
 
+/// 服务器对战页：通过房间号，不依赖局域网；完成后从服务器取对手成绩
+class ServerDuelPage extends StatefulWidget {
+  const ServerDuelPage({
+    super.key,
+    required this.roomId,
+    required this.data,
+    required this.topic,
+    required this.subtopic,
+    required this.seed,
+    required this.count,
+    required this.isHost,
+    required this.opponentName,
+  });
+
+  final String roomId;
+  final DemoData data;
+  final String topic;
+  final String subtopic;
+  final int seed;
+  final int count;
+  final bool isHost;
+  final String opponentName;
+
+  @override
+  State<ServerDuelPage> createState() => _ServerDuelPageState();
+}
+
+class _ServerDuelPageState extends State<ServerDuelPage> {
+  static const int _secondsPerQuestion = 12;
+  static const int _pollSeconds = 60;
+  late final List<Question> _questions;
+  Timer? _timer;
+  int _index = 0;
+  int _score = 0;
+  int _correct = 0;
+  late final DateTime _quizStartTime;
+  int _remaining = _secondsPerQuestion;
+  bool _answered = false;
+  String? _selected;
+  bool _waitingOpponent = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _questions = _buildQuestions();
+    _quizStartTime = DateTime.now();
+    _startTimer();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  List<Question> _buildQuestions() {
+    final pool = widget.topic == '全部'
+        ? widget.data.questions
+        : widget.data.questions.where((q) => q.topic == widget.topic).toList();
+    final filtered = widget.subtopic == '全部'
+        ? pool
+        : pool.where((q) => q.subtopic == widget.subtopic).toList();
+    final list = List<Question>.from(filtered.isEmpty ? pool : filtered);
+    list.shuffle(Random(widget.seed));
+    return list.take(min(widget.count, list.length)).toList();
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    setState(() => _remaining = _secondsPerQuestion);
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      if (_answered) return;
+      if (_remaining <= 1) {
+        timer.cancel();
+        setState(() {
+          _answered = true;
+          _selected = null;
+        });
+      } else {
+        setState(() => _remaining -= 1);
+      }
+    });
+  }
+
+  void _answer(String option) {
+    if (_answered) return;
+    final correct = _questions[_index].answer;
+    _timer?.cancel();
+    setState(() {
+      _selected = option;
+      _answered = true;
+      if (option.startsWith(correct)) {
+        _score += 10 + _remaining;
+        _correct += 1;
+      }
+    });
+  }
+
+  void _goToResult({
+    required int totalSeconds,
+    required int opponentScore,
+    required int opponentCorrect,
+    required int opponentTotal,
+    required bool hasOpponentResult,
+  }) {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => LanDuelResultPage(
+          myScore: _score,
+          opponentScore: opponentScore,
+          myCorrect: _correct,
+          myTotal: _questions.length,
+          opponentCorrect: opponentCorrect,
+          opponentTotal: opponentTotal,
+          hasOpponentResult: hasOpponentResult,
+          timeUsed: totalSeconds,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _next() async {
+    final done = _index + 1 >= _questions.length;
+    if (done) {
+      final totalSeconds = DateTime.now().difference(_quizStartTime).inSeconds;
+      await ArenaPkRepository.submitScore(_score);
+      if (mounted) await ArenaStatsStore.syncFromServer();
+      if (!mounted) return;
+      final res = await ArenaDuelRepository.submitDuelRoomResult(
+        roomId: widget.roomId,
+        score: _score,
+        correctCount: _correct,
+        total: _questions.length,
+      );
+      if (!mounted) return;
+      int oppScore = 0;
+      int oppCorrect = 0;
+      int oppTotal = _questions.length;
+      bool hasOpponent = false;
+      if (res != null &&
+          res['opponentScore'] != null &&
+          res['opponentCorrect'] != null &&
+          res['opponentTotal'] != null) {
+        oppScore = (res['opponentScore'] is int)
+            ? res['opponentScore'] as int
+            : (res['opponentScore'] as num).toInt();
+        oppCorrect = (res['opponentCorrect'] is int)
+            ? res['opponentCorrect'] as int
+            : (res['opponentCorrect'] as num).toInt();
+        oppTotal = (res['opponentTotal'] is int)
+            ? res['opponentTotal'] as int
+            : (res['opponentTotal'] as num).toInt();
+        hasOpponent = true;
+      }
+      if (hasOpponent) {
+        _goToResult(
+          totalSeconds: totalSeconds,
+          opponentScore: oppScore,
+          opponentCorrect: oppCorrect,
+          opponentTotal: oppTotal,
+          hasOpponentResult: true,
+        );
+        return;
+      }
+      setState(() => _waitingOpponent = true);
+      final deadline = DateTime.now().add(const Duration(seconds: _pollSeconds));
+      while (mounted && DateTime.now().isBefore(deadline)) {
+        await Future.delayed(const Duration(seconds: 2));
+        if (!mounted) break;
+        final room = await ArenaDuelRepository.getDuelRoom(widget.roomId);
+        if (room != null &&
+            room['opponentScore'] != null &&
+            room['opponentCorrect'] != null &&
+            room['opponentTotal'] != null) {
+          oppScore = (room['opponentScore'] is int)
+              ? room['opponentScore'] as int
+              : (room['opponentScore'] as num).toInt();
+          oppCorrect = (room['opponentCorrect'] is int)
+              ? room['opponentCorrect'] as int
+              : (room['opponentCorrect'] as num).toInt();
+          oppTotal = (room['opponentTotal'] is int)
+              ? room['opponentTotal'] as int
+              : (room['opponentTotal'] as num).toInt();
+          if (mounted) setState(() => _waitingOpponent = false);
+          _goToResult(
+            totalSeconds: totalSeconds,
+            opponentScore: oppScore,
+            opponentCorrect: oppCorrect,
+            opponentTotal: oppTotal,
+            hasOpponentResult: true,
+          );
+          return;
+        }
+      }
+      if (mounted) setState(() => _waitingOpponent = false);
+      _goToResult(
+        totalSeconds: totalSeconds,
+        opponentScore: 0,
+        opponentCorrect: 0,
+        opponentTotal: _questions.length,
+        hasOpponentResult: false,
+      );
+      return;
+    }
+    setState(() {
+      _index += 1;
+      _answered = false;
+      _selected = null;
+    });
+    _startTimer();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_waitingOpponent) {
+      return Scaffold(
+        body: Stack(
+          children: [
+            const StarryBackground(),
+            SafeArea(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CircularProgressIndicator(color: Color(0xFFFF9F1C)),
+                      const SizedBox(height: 24),
+                      Text(
+                        '等待对手提交…',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey[800],
+                            ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '对方交卷后会自动显示结果',
+                        style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    final q = _questions[_index];
+    return Scaffold(
+      body: Stack(
+        children: [
+          const StarryBackground(),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                      const SizedBox(width: 6),
+                      Text('双人对战', style: Theme.of(context).textTheme.headlineMedium),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: LinearProgressIndicator(
+                          value: (_index + 1) / _questions.length,
+                          minHeight: 6,
+                          backgroundColor: const Color(0xFFFFF1D0),
+                          valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFF9F1C)),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text('${_index + 1}/${_questions.length}'),
+                    ],
+                  ),
+                  if (_index > 0 || _answered) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      '当前正确率：${_index + (_answered ? 1 : 0) > 0 ? (100 * _correct / (_index + (_answered ? 1 : 0))).round() : 0}%',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            q.title,
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                          const SizedBox(height: 16),
+                          ...q.options.map((opt) {
+                            final correct = q.answer;
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: InkWell(
+                                onTap: () => _answer(opt),
+                                borderRadius: BorderRadius.circular(14),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: _selected != null && _selected == opt
+                                          ? const Color(0xFFFF9F1C)
+                                          : const Color(0xFFE9E0C9),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          opt,
+                                          style: TextStyle(
+                                            color: _selected != null && opt.startsWith(correct)
+                                                ? const Color(0xFF2E7D32)
+                                                : null,
+                                          ),
+                                        ),
+                                      ),
+                                      if (_selected != null && _selected!.startsWith(correct) && opt == _selected)
+                                        const Icon(Icons.check_circle_rounded, color: Color(0xFF2E7D32)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          }),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _answered ? _next : null,
+                      child: Text(_index + 1 >= _questions.length ? '提交' : '下一题'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// 局域网对战结果页：仅显示胜负、我方得分、对手得分与对手答题结果
 class LanDuelResultPage extends StatelessWidget {
   const LanDuelResultPage({

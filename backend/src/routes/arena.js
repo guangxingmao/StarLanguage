@@ -2,6 +2,16 @@ const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { pool } = require('../db');
 const { evaluateArenaAchievements } = require('../services/arena_achievements');
 
+// 服务器对战房间（内存存储，重启清空）：roomId -> { hostPhone, hostName, guestPhone?, guestName?, topic, subtopic, seed, count, hostResult?, guestResult?, createdAt }
+const duelRooms = new Map();
+const DUEL_ROOM_TTL_MS = 30 * 60 * 1000; // 30 分钟无活动可清理
+
+function randomRoomId() {
+  let id = '';
+  for (let i = 0; i < 6; i++) id += Math.floor(Math.random() * 10);
+  return id;
+}
+
 function routes(app) {
   // 题库主题与子主题（供前端筛选器、分区榜使用）
   app.get('/arena/topics', async (_req, res) => {
@@ -180,6 +190,122 @@ function routes(app) {
       console.error('[arena duel/submit]', err);
       res.status(500).json({ error: 'server_error', message: '提交失败' });
     }
+  });
+
+  // ---------- 服务器对战（双人通过房间码，不依赖局域网） ----------
+  // 创建对战房间，返回房间号
+  app.post('/arena/duel/room', requireAuth, async (req, res) => {
+    const { phone } = req.auth;
+    const name = (req.auth && req.auth.name) ? String(req.auth.name) : '房主';
+    const topic = (req.body && req.body.topic) ? String(req.body.topic).trim() : '全部';
+    const subtopic = (req.body && req.body.subtopic) ? String(req.body.subtopic).trim() : '全部';
+    const seed = Math.abs((phone + Date.now()).split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % 1000000;
+    const count = 10;
+    let roomId = randomRoomId();
+    while (duelRooms.has(roomId)) roomId = randomRoomId();
+    duelRooms.set(roomId, {
+      hostPhone: phone,
+      hostName: name,
+      guestPhone: null,
+      guestName: null,
+      topic,
+      subtopic,
+      seed,
+      count,
+      hostResult: null,
+      guestResult: null,
+      createdAt: Date.now(),
+    });
+    return res.json({ roomId, topic, subtopic, seed, count });
+  });
+
+  // 加入对战房间
+  app.post('/arena/duel/room/:roomId/join', requireAuth, async (req, res) => {
+    const { phone } = req.auth;
+    const name = (req.auth && req.auth.name) ? String(req.auth.name) : '对手';
+    const roomId = String(req.params.roomId || '').trim();
+    const room = duelRooms.get(roomId);
+    if (!room) return res.status(404).json({ error: 'not_found', message: '房间不存在或已关闭' });
+    if (room.guestPhone) return res.status(400).json({ error: 'room_full', message: '房间已满' });
+    if (room.hostPhone === phone) return res.status(400).json({ error: 'same_user', message: '不能加入自己创建的房间' });
+    room.guestPhone = phone;
+    room.guestName = name;
+    return res.json({
+      topic: room.topic,
+      subtopic: room.subtopic,
+      seed: room.seed,
+      count: room.count,
+      hostName: room.hostName,
+    });
+  });
+
+  // 查询房间状态（用于轮询对手结果）
+  app.get('/arena/duel/room/:roomId', requireAuth, async (req, res) => {
+    const { phone } = req.auth;
+    const roomId = String(req.params.roomId || '').trim();
+    const room = duelRooms.get(roomId);
+    if (!room) return res.status(404).json({ error: 'not_found', message: '房间不存在或已关闭' });
+    const isHost = room.hostPhone === phone;
+    const isGuest = room.guestPhone === phone;
+    if (!isHost && !isGuest) return res.status(403).json({ error: 'forbidden', message: '你不是该房间成员' });
+    const myResult = isHost ? room.hostResult : room.guestResult;
+    const oppResult = isHost ? room.guestResult : room.hostResult;
+    const oppName = isHost ? room.guestName : room.hostName;
+    const payload = {
+      topic: room.topic,
+      subtopic: room.subtopic,
+      seed: room.seed,
+      count: room.count,
+      myResult: myResult ? { score: myResult.score, correctCount: myResult.correctCount, total: myResult.total } : null,
+    };
+    if (oppResult) {
+      payload.opponentScore = oppResult.score;
+      payload.opponentCorrect = oppResult.correctCount;
+      payload.opponentTotal = oppResult.total;
+      payload.opponentName = oppName || '对手';
+    }
+    return res.json(payload);
+  });
+
+  // 提交本局结果；若双方都已提交则返回对手结果并写入对战记录
+  app.post('/arena/duel/room/:roomId/submit', requireAuth, async (req, res) => {
+    const { phone } = req.auth;
+    const roomId = String(req.params.roomId || '').trim();
+    const { score, correctCount, total } = req.body || {};
+    const room = duelRooms.get(roomId);
+    if (!room) return res.status(404).json({ error: 'not_found', message: '房间不存在或已关闭' });
+    const isHost = room.hostPhone === phone;
+    const isGuest = room.guestPhone === phone;
+    if (!isHost && !isGuest) return res.status(403).json({ error: 'forbidden', message: '你不是该房间成员' });
+    const s = Number(score) || 0;
+    const c = Number(correctCount) || 0;
+    const t = Number(total) || 0;
+    if (isHost) room.hostResult = { score: s, correctCount: c, total: t };
+    else room.guestResult = { score: s, correctCount: c, total: t };
+    const oppResult = isHost ? room.guestResult : room.hostResult;
+    const oppName = isHost ? room.guestName : room.hostName;
+    const oppPhone = isHost ? room.guestPhone : room.hostPhone;
+    if (oppResult) {
+      try {
+        await pool.query(
+          `INSERT INTO arena_lan_duel_sessions (user_phone, opponent_phone, user_score, opponent_score)
+           VALUES ($1, $2, $3, $4), ($2, $1, $4, $3)`,
+          [phone, oppPhone || '', s, oppResult.score]
+        );
+      } catch (e) {
+        console.error('[arena duel room submit insert]', e);
+      }
+    }
+    const response = {
+      ok: true,
+      opponentScore: oppResult ? oppResult.score : null,
+      opponentCorrect: oppResult ? oppResult.correctCount : null,
+      opponentTotal: oppResult ? oppResult.total : null,
+      opponentName: oppName || '对手',
+      opponentPhone: oppPhone || '',
+    };
+    if (oppResult) duelRooms.delete(roomId);
+    return res.json(response);
   });
 
   // 局域网对战记录列表（最近挑战用）

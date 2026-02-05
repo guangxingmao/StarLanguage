@@ -600,6 +600,93 @@ class ArenaDuelRepository {
       return [];
     }
   }
+
+  /// 服务器对战：创建房间
+  static Future<Map<String, dynamic>?> createDuelRoom({String topic = '全部', String subtopic = '全部'}) async {
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    final token = ProfileStore.authToken;
+    if (token == null || token.isEmpty) return null;
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/arena/duel/room'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'topic': topic, 'subtopic': subtopic}),
+      );
+      if (res.statusCode != 200) return null;
+      final data = jsonDecode(res.body) as Map<String, dynamic>?;
+      return data;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 服务器对战：加入房间
+  static Future<Map<String, dynamic>?> joinDuelRoom(String roomId) async {
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    final token = ProfileStore.authToken;
+    if (token == null || token.isEmpty) return null;
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/arena/duel/room/$roomId/join'),
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+        body: jsonEncode({}),
+      );
+      if (res.statusCode != 200) return null;
+      return jsonDecode(res.body) as Map<String, dynamic>?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 服务器对战：查询房间（轮询对手结果）
+  static Future<Map<String, dynamic>?> getDuelRoom(String roomId) async {
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    final token = ProfileStore.authToken;
+    if (token == null || token.isEmpty) return null;
+    try {
+      final res = await http.get(
+        Uri.parse('$baseUrl/arena/duel/room/$roomId'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (res.statusCode != 200) return null;
+      return jsonDecode(res.body) as Map<String, dynamic>?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 服务器对战：提交本局结果，返回含对手结果（若对方已提交）
+  static Future<Map<String, dynamic>?> submitDuelRoomResult({
+    required String roomId,
+    required int score,
+    required int correctCount,
+    required int total,
+  }) async {
+    final baseUrl = AiProxyStore.url.value.replaceAll(RegExp(r'/$'), '');
+    final token = ProfileStore.authToken;
+    if (token == null || token.isEmpty) return null;
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl/arena/duel/room/$roomId/submit'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'score': score,
+          'correctCount': correctCount,
+          'total': total,
+        }),
+      );
+      if (res.statusCode != 200) return null;
+      return jsonDecode(res.body) as Map<String, dynamic>?;
+    } catch (_) {
+      return null;
+    }
+  }
 }
 
 /// 局域网 PK 结束后提交得分（只更新在线 PK 排行用的 pk_score）

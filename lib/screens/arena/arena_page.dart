@@ -8,10 +8,9 @@ import '../../data/arena_data.dart';
 import '../../data/assistant_route.dart';
 import '../../data/profile.dart';
 import '../../data/demo_data.dart';
-import '../../lan/lan_duel.dart';
 import '../../widgets/reveal.dart';
 import '../../widgets/starry_background.dart';
-import 'arena_quiz.dart' show LanDuelPage, QuizPage;
+import 'arena_quiz.dart' show QuizPage, ServerDuelPage;
 
 class ArenaPage extends StatefulWidget {
   const ArenaPage({
@@ -288,17 +287,11 @@ class _ArenaPageState extends State<ArenaPage> {
   }
 
   void _openLanDuelSheet(BuildContext context, DemoData data) {
-    if (kIsWeb) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Web 暂不支持局域网对战')),
-      );
-      return;
-    }
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _LanDuelSheet(
+      builder: (_) => _ServerDuelSheet(
         topic: _selectedTopic,
         subtopic: _selectedSubtopic,
         data: data,
@@ -1071,8 +1064,9 @@ class _ScoreLeaderboardDetailPageState extends State<ScoreLeaderboardDetailPage>
   }
 }
 
-class _LanDuelSheet extends StatefulWidget {
-  const _LanDuelSheet({
+/// 双人对战（服务器中转）：创建房间得房间号，对方输入房间号加入；无需局域网
+class _ServerDuelSheet extends StatefulWidget {
+  const _ServerDuelSheet({
     required this.topic,
     required this.subtopic,
     required this.data,
@@ -1083,189 +1077,104 @@ class _LanDuelSheet extends StatefulWidget {
   final DemoData data;
 
   @override
-  State<_LanDuelSheet> createState() => _LanDuelSheetState();
+  State<_ServerDuelSheet> createState() => _ServerDuelSheetState();
 }
 
-class _LanDuelSheetState extends State<_LanDuelSheet> {
-  final TextEditingController _ipController = TextEditingController();
-  LanDuelHost? _host;
-  DuelConnection? _connection;
-  String _status = '请选择创建或加入';
-  int? _port;
-  bool _hosting = false;
-  bool _joining = false;
-  List<String> _localIps = const [];
+class _ServerDuelSheetState extends State<_ServerDuelSheet> {
+  final TextEditingController _roomCodeController = TextEditingController();
+  String _status = '';
+  bool _loading = false;
+  String? _createdRoomId;
+  String? _createdSeed;
+  String? _createdCount;
 
   @override
   void dispose() {
-    _ipController.dispose();
-    _host?.close();
-    _connection?.close();
+    _roomCodeController.dispose();
     super.dispose();
   }
 
-  /// 单次订阅等待第一条指定 type 的消息，避免 firstWhere 触发的 stream 绑定错误
-  Future<Map<String, dynamic>?> _waitForFirstMessage(DuelConnection conn, String type) async {
-    final completer = Completer<Map<String, dynamic>?>();
-    StreamSubscription<Map<String, dynamic>>? sub;
-    sub = conn.messages.listen((msg) {
-      if (msg['type'] == type && !completer.isCompleted) {
-        sub?.cancel();
-        completer.complete(msg as Map<String, dynamic>);
-      }
-    });
-    return completer.future.timeout(
-      const Duration(seconds: 60),
-      onTimeout: () {
-        sub?.cancel();
-        if (!completer.isCompleted) completer.complete(null);
-        return null;
-      },
-    );
-  }
-
-  Future<void> _startHost() async {
+  Future<void> _createRoom() async {
     setState(() {
-      _hosting = true;
+      _loading = true;
       _status = '正在创建房间…';
     });
-    try {
-      _host = LanDuelHost();
-      _port = await _host!.start();
-      _localIps = await _host!.localIps();
-      setState(() => _status = '等待对方连接…');
-      final conn = await _host!.waitForClient();
-      _connection = conn;
-      final join = await _waitForFirstMessage(conn, 'join');
-      if (!mounted) return;
-      if (join == null) {
-        setState(() => _status = '等待对方加入超时');
-        return;
-      }
-      final accept = await _confirmJoin(join['name']?.toString() ?? '对手');
-      if (!accept) {
-        conn.send({'type': 'deny'});
-        conn.close();
-        setState(() => _status = '已拒绝对战请求');
-        return;
-      }
-      conn.send({'type': 'accept'});
-      _startNetworkDuel(conn, join);
-    } catch (e) {
-      setState(() => _status = '创建失败：$e');
+    final res = await ArenaDuelRepository.createDuelRoom(
+      topic: widget.topic,
+      subtopic: widget.subtopic,
+    );
+    if (!mounted) return;
+    setState(() => _loading = false);
+    if (res == null) {
+      setState(() => _status = '创建失败，请检查网络或登录');
+      return;
     }
-  }
-
-  Future<void> _joinHost() async {
-    final ip = _ipController.text.trim();
-    if (ip.isEmpty) return;
+    final roomId = res['roomId']?.toString() ?? '';
+    final seed = res['seed'];
+    final count = res['count'];
     setState(() {
-      _joining = true;
-      _status = '正在连接…';
+      _createdRoomId = roomId;
+      _createdSeed = seed?.toString();
+      _createdCount = count?.toString();
+      _status = '房间已创建，请对方输入房间号加入';
     });
-    try {
-      final client = LanDuelClient();
-      final conn = await client.connect(ip);
-      _connection = conn;
-      final profile = ProfileStore.profile.value;
-      conn.send({
-        'type': 'join',
-        'name': profile.name ?? '星知玩家',
-        'phone': profile.phoneNumber ?? '',
-      });
-      setState(() => _status = '等待对方确认…');
-      await for (final msg in conn.messages) {
-        if (msg['type'] == 'accept') {
-          setState(() => _status = '已通过，等待开始…');
-        }
-        if (msg['type'] == 'start') {
-          if (!mounted) return;
-          _startJoinDuel(conn, msg);
-          break;
-        }
-        if (msg['type'] == 'deny') {
-          if (!mounted) return;
-          setState(() => _status = '对方拒绝了对战');
-          break;
-        }
-      }
-    } catch (e) {
-      setState(() => _status = '连接失败：$e');
+  }
+
+  Future<void> _joinRoom() async {
+    final code = _roomCodeController.text.trim();
+    if (code.isEmpty) {
+      setState(() => _status = '请输入 6 位房间号');
+      return;
     }
-  }
-
-  Future<bool> _confirmJoin(String name) async {
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('对战邀请'),
-          content: Text('来自 $name 的对战请求，是否接受？'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('拒绝')),
-            ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('接受')),
-          ],
-        );
-      },
-    );
-    return result ?? false;
-  }
-
-  void _startNetworkDuel(DuelConnection connection, Map<String, dynamic>? joinPayload) {
-    final seed = DateTime.now().millisecondsSinceEpoch % 1000000;
-    final count = 10;
-    final profile = ProfileStore.profile.value;
-    connection.send({
-      'type': 'start',
-      'topic': widget.topic,
-      'subtopic': widget.subtopic,
-      'seed': seed,
-      'count': count,
-      'phone': profile.phoneNumber ?? '',
-      'name': profile.name ?? '房主',
+    setState(() {
+      _loading = true;
+      _status = '正在加入…';
     });
-    final opponentPhone = joinPayload?['phone']?.toString() ?? '';
-    final opponentName = joinPayload?['name']?.toString() ?? '对手';
+    final res = await ArenaDuelRepository.joinDuelRoom(code);
+    if (!mounted) return;
+    setState(() => _loading = false);
+    if (res == null) {
+      setState(() => _status = '加入失败，房间不存在或已满');
+      return;
+    }
+    final topic = res['topic']?.toString() ?? widget.topic;
+    final subtopic = res['subtopic']?.toString() ?? widget.subtopic;
+    final seed = (res['seed'] is int) ? res['seed'] as int : (res['seed'] as num?)?.toInt() ?? 0;
+    final count = (res['count'] is int) ? res['count'] as int : (res['count'] as num?)?.toInt() ?? 10;
+    final hostName = res['hostName']?.toString() ?? '对手';
     Navigator.of(context).pop();
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => LanDuelPage(
-          connection: connection,
-          data: widget.data,
-          topic: widget.topic,
-          subtopic: widget.subtopic,
-          seed: seed,
-          count: count,
-          isHost: true,
-          room: null,
-          opponentPhone: opponentPhone,
-          opponentName: opponentName,
-        ),
-      ),
-    );
-  }
-
-  void _startJoinDuel(DuelConnection connection, Map<String, dynamic> msg) {
-    final topic = msg['topic']?.toString() ?? widget.topic;
-    final subtopic = msg['subtopic']?.toString() ?? widget.subtopic;
-    final seed = (msg['seed'] as num?)?.toInt() ?? 0;
-    final count = (msg['count'] as num?)?.toInt() ?? 10;
-    final opponentPhone = msg['phone']?.toString() ?? '';
-    final opponentName = msg['name']?.toString() ?? '对手';
-    Navigator.of(context).pop();
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => LanDuelPage(
-          connection: connection,
+        builder: (_) => ServerDuelPage(
+          roomId: code,
           data: widget.data,
           topic: topic,
           subtopic: subtopic,
           seed: seed,
           count: count,
           isHost: false,
-          room: null,
-          opponentPhone: opponentPhone,
-          opponentName: opponentName,
+          opponentName: hostName,
+        ),
+      ),
+    );
+  }
+
+  void _startAsHost() {
+    if (_createdRoomId == null || _createdSeed == null || _createdCount == null) return;
+    final seed = int.tryParse(_createdSeed!) ?? 0;
+    final count = int.tryParse(_createdCount!) ?? 10;
+    Navigator.of(context).pop();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ServerDuelPage(
+          roomId: _createdRoomId!,
+          data: widget.data,
+          topic: widget.topic,
+          subtopic: widget.subtopic,
+          seed: seed,
+          count: count,
+          isHost: true,
+          opponentName: '对手',
         ),
       ),
     );
@@ -1273,7 +1182,6 @@ class _LanDuelSheetState extends State<_LanDuelSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final ips = _localIps;
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
@@ -1286,42 +1194,69 @@ class _LanDuelSheetState extends State<_LanDuelSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('局域网对战', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-            const SizedBox(height: 12),
-            Text('当前主题：${widget.topic} · ${widget.subtopic}'),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _hosting ? null : _startHost,
-                    child: const Text('创建房间'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _joining ? null : _joinHost,
-                    child: const Text('加入房间'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _ipController,
-              decoration: InputDecoration(
-                hintText: '输入对方 IP（如 192.168.1.8）',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-            const SizedBox(height: 10),
-            if (_port != null) Text('端口：$_port'),
-            if (ips.isNotEmpty) Text('本机 IP：${ips.join(' / ')}'),
-            const SizedBox(height: 10),
-            Text(_status, style: const TextStyle(color: Color(0xFF6F6B60))),
+            const Text('双人对战', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
             const SizedBox(height: 8),
-            const Text('提示：双方需在同一 Wi‑Fi 下。'),
+            Text('当前主题：${widget.topic} · ${widget.subtopic}', style: TextStyle(fontSize: 13, color: Colors.grey[700])),
+            const SizedBox(height: 16),
+            if (_createdRoomId == null) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _loading ? null : _createRoom,
+                      child: _loading ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('创建房间'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _loading ? null : _joinRoom,
+                      child: const Text('加入房间'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _roomCodeController,
+                decoration: InputDecoration(
+                  hintText: '输入 6 位房间号',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+              ),
+            ] else ...[
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF8ED),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFFFD166)),
+                ),
+                child: Column(
+                  children: [
+                    const Text('房间号', style: TextStyle(fontSize: 12, color: Color(0xFF6F6B60))),
+                    const SizedBox(height: 6),
+                    Text(_createdRoomId!, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700, letterSpacing: 8)),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _startAsHost,
+                        child: const Text('开始对战'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            if (_status.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(_status, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+            ],
+            const SizedBox(height: 8),
+            const Text('提示：两台设备连接同一后端即可对战，对手成绩由服务器同步。', style: TextStyle(fontSize: 12, color: Color(0xFF9E9E9E))),
           ],
         ),
       ),
