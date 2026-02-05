@@ -42,29 +42,89 @@ async function getReminder(phone) {
   return { reminderTime: '20:00', message: '今天还差 4 项打卡，加油！' };
 }
 
-async function getStats(phone) {
+/** 连续天数：每日打卡有完成其中任一项即算该天完成，从今天起往前数连续有完成的天数（数据来自 growth_daily_completion + 擂台 + 社群） */
+async function getStreakDays(phone) {
   const r = await pool.query(
-    'SELECT streak_days, accuracy_percent, badge_count, weekly_done, weekly_total FROM growth_stats WHERE phone = $1',
+    `SELECT d AS date_key FROM (
+      SELECT DISTINCT date AS d FROM growth_daily_completion WHERE phone = $1 AND completed = true
+      UNION
+      SELECT DISTINCT to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') FROM arena_challenge_sessions WHERE phone = $1
+      UNION
+      SELECT DISTINCT to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') FROM arena_lan_duel_sessions WHERE user_phone = $1
+      UNION
+      SELECT DISTINCT to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') FROM topics WHERE author_phone = $1
+      UNION
+      SELECT DISTINCT to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') FROM topic_comments WHERE author_phone = $1
+    ) t`,
     [phone]
   );
-  if (r.rows.length) {
-    const row = r.rows[0];
-    return {
-      streakDays: row.streak_days ?? 0,
-      accuracyPercent: row.accuracy_percent ?? 0,
-      badgeCount: row.badge_count ?? 0,
-      weeklyDone: row.weekly_done ?? 0,
-      weeklyTotal: row.weekly_total ?? 4,
-    };
+  const dateSet = new Set(r.rows.map((row) => String(row.date_key).slice(0, 10)));
+  const today = todayKey();
+  let streak = 0;
+  let d = today;
+  for (;;) {
+    if (!dateSet.has(d)) break;
+    streak++;
+    const prev = new Date(d + 'T12:00:00Z');
+    prev.setUTCDate(prev.getUTCDate() - 1);
+    d = prev.toISOString().slice(0, 10);
   }
-  const now = Date.now();
-  await pool.query(
-    `INSERT INTO growth_stats (phone, streak_days, accuracy_percent, badge_count, weekly_done, weekly_total, updated_at)
-     VALUES ($1, 0, 0, 0, 0, 4, $2)
-     ON CONFLICT (phone) DO NOTHING`,
-    [phone, now]
+  return streak;
+}
+
+/** 正确率：所做过所有题目合起来的正确率（仅统计 arena_challenge_sessions 单人挑战） */
+async function getAccuracyPercent(phone) {
+  const r = await pool.query(
+    `SELECT COALESCE(SUM(correct_count), 0)::int AS correct, COALESCE(SUM(total_questions), 0)::int AS total
+     FROM arena_challenge_sessions WHERE phone = $1`,
+    [phone]
   );
-  return { streakDays: 0, accuracyPercent: 0, badgeCount: 0, weeklyDone: 0, weeklyTotal: 4 };
+  const total = r.rows[0] ? Number(r.rows[0].total) || 0 : 0;
+  const correct = r.rows[0] ? Number(r.rows[0].correct) || 0 : 0;
+  if (total === 0) return 0;
+  return Math.min(100, Math.round((correct / total) * 100));
+}
+
+/** 徽章数：已解锁成就数量（user_achievements） */
+async function getBadgeCount(phone) {
+  const r = await pool.query(
+    'SELECT COUNT(*)::int AS c FROM user_achievements WHERE phone = $1',
+    [phone]
+  );
+  return r.rows[0] ? Math.max(0, Number(r.rows[0].c) || 0) : 0;
+}
+
+async function getStats(phone) {
+  const [streakDays, accuracyPercent, badgeCount, statsRow] = await Promise.all([
+    getStreakDays(phone),
+    getAccuracyPercent(phone),
+    getBadgeCount(phone),
+    pool.query(
+      'SELECT weekly_done, weekly_total FROM growth_stats WHERE phone = $1',
+      [phone]
+    ),
+  ]);
+  let weeklyDone = 0;
+  let weeklyTotal = 4;
+  if (statsRow.rows.length) {
+    weeklyDone = statsRow.rows[0].weekly_done ?? 0;
+    weeklyTotal = statsRow.rows[0].weekly_total ?? 4;
+  } else {
+    const now = Date.now();
+    await pool.query(
+      `INSERT INTO growth_stats (phone, streak_days, accuracy_percent, badge_count, weekly_done, weekly_total, updated_at)
+       VALUES ($1, 0, 0, 0, 0, 4, $2)
+       ON CONFLICT (phone) DO NOTHING`,
+      [phone, now]
+    );
+  }
+  return {
+    streakDays,
+    accuracyPercent,
+    badgeCount,
+    weeklyDone,
+    weeklyTotal,
+  };
 }
 
 async function getDailyTaskCompletion(phone) {
@@ -138,17 +198,16 @@ function buildGrowthCards(stats) {
   ];
 }
 
+/** 每日提醒：进度与文案与每日任务打卡一致（按当前完成项数计算还差几项） */
 function buildReminderPayload(reminderSetting, tasksWithCompletion) {
   const completedCount = tasksWithCompletion.filter((t) => t.completed).length;
   const total = tasksWithCompletion.length;
   const progress = total === 0 ? 0 : Math.min(1, completedCount / total);
   const remainingCount = Math.max(0, total - completedCount);
   const message =
-    reminderSetting.message && reminderSetting.message.trim()
-      ? reminderSetting.message
-      : remainingCount > 0
-        ? `今天还差 ${remainingCount} 项打卡，加油！`
-        : '今日打卡已完成，真棒！';
+    remainingCount > 0
+      ? `今天还差 ${remainingCount} 项打卡，加油！`
+      : '今日打卡已完成，真棒！';
   return {
     reminderTime: reminderSetting.reminderTime || '20:00',
     message,

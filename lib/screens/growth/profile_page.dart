@@ -9,7 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../data/achievement_data.dart';
 import '../../utils/achievement_badges.dart';
 import '../../data/arena_data.dart';
-import '../../data/demo_data.dart';
+import '../../data/demo_data.dart' hide Achievement;
 import '../../data/growth_data.dart';
 import '../../data/profile.dart';
 import '../../data/social_data.dart';
@@ -180,90 +180,28 @@ class _ProfilePageState extends State<ProfilePage> {
                       builder: (context, snap) {
                         final wall = snap.data;
                         if (wall == null || wall.achievements.isEmpty) {
-                          return Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(18),
-                              border: Border.all(color: const Color(0xFFE9E0C9)),
+                          return _AchievementSectionPreview(
+                            latest: const [],
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const AchievementWallPage(),
+                              ),
                             ),
-                            child: const Text('暂无成就数据'),
                           );
                         }
-                        return Column(
-                          children: wall.achievements.map((a) {
-                            final unlocked = wall.isUnlocked(a.id);
-                            return Container(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(18),
-                                border: Border.all(
-                                  color: unlocked
-                                      ? const Color(0xFFFFD166)
-                                      : const Color(0xFFE9E0C9),
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  SizedBox(
-                                    width: 40,
-                                    height: 40,
-                                    child: SvgPicture.asset(
-                                      AchievementBadges.assetPath(a.iconKey),
-                                      width: 40,
-                                      height: 40,
-                                      colorFilter: unlocked
-                                          ? null
-                                          : ColorFilter.mode(
-                                              const Color(0xFFB0AFA6),
-                                              BlendMode.saturation,
-                                            ),
-                                    ),
-                                  ),
-                                  if (!unlocked)
-                                    Padding(
-                                      padding: const EdgeInsets.only(left: 4),
-                                      child: Icon(
-                                        Icons.lock_outline_rounded,
-                                        size: 18,
-                                        color: const Color(0xFFB0AFA6),
-                                      ),
-                                    ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          a.name,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w700,
-                                            color: Color(0xFF2B2B2B),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          a.description,
-                                          style: const TextStyle(
-                                            fontSize: 13,
-                                            color: Color(0xFF6F6B60),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  if (unlocked)
-                                    const Icon(
-                                      Icons.check_circle_rounded,
-                                      color: Color(0xFF2EC4B6),
-                                      size: 22,
-                                    ),
-                                ],
-                              ),
-                            );
-                          }).toList(),
+                        final latestIds = wall.unlockedIds.reversed.take(5).toList();
+                        final byId = {for (final a in wall.achievements) a.id: a};
+                        final latest = latestIds
+                            .map((id) => byId[id])
+                            .whereType<Achievement>()
+                            .toList();
+                        return _AchievementSectionPreview(
+                          latest: latest,
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const AchievementWallPage(),
+                            ),
+                          ),
                         );
                       },
                     ),
@@ -758,6 +696,257 @@ Future<void> showEditProfileSheet(BuildContext context) async {
       );
     },
   );
+}
+
+/// 个人主页成就墙预览：仅显示最近 5 个已完成的成就，点击进入成就墙全页
+class _AchievementSectionPreview extends StatelessWidget {
+  const _AchievementSectionPreview({
+    required this.latest,
+    required this.onTap,
+  });
+
+  final List<Achievement> latest;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFE9E0C9)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (latest.isEmpty)
+                const Text('暂无成就，点击查看全部成就')
+              else
+                ...latest.map((a) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 36,
+                          height: 36,
+                          child: SvgPicture.asset(
+                            AchievementBadges.assetPath(a.iconKey),
+                            width: 36,
+                            height: 36,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                a.name,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF2B2B2B),
+                                  fontSize: 14,
+                                ),
+                              ),
+                              Text(
+                                a.description,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF6F6B60),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              const SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text(
+                    '查看全部成就',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 20,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 成就墙全页：全部成就，2 列网格，已完成的高亮显示（无打钩）
+class AchievementWallPage extends StatefulWidget {
+  const AchievementWallPage({super.key});
+
+  @override
+  State<AchievementWallPage> createState() => _AchievementWallPageState();
+}
+
+class _AchievementWallPageState extends State<AchievementWallPage> {
+  late Future<AchievementWallData> _wallFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _wallFuture = AchievementRepository.loadWall();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('成就墙'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: Stack(
+        children: [
+          const StarryBackground(),
+          SafeArea(
+            child: FutureBuilder<AchievementWallData>(
+              future: _wallFuture,
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final wall = snap.data;
+                if (wall == null || wall.achievements.isEmpty) {
+                  return const Center(child: Text('暂无成就数据'));
+                }
+                return GridView.builder(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
+                    childAspectRatio: 0.82,
+                  ),
+                  itemCount: wall.achievements.length,
+                  itemBuilder: (context, index) {
+                    final a = wall.achievements[index];
+                    final unlocked = wall.isUnlocked(a.id);
+                    return _AchievementGridCard(
+                      achievement: a,
+                      unlocked: unlocked,
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 成就墙网格单卡：已完成高亮（无打钩），未完成灰显
+class _AchievementGridCard extends StatelessWidget {
+  const _AchievementGridCard({
+    required this.achievement,
+    required this.unlocked,
+  });
+
+  final Achievement achievement;
+  final bool unlocked;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: unlocked
+            ? const Color(0xFFFFF8ED)
+            : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: unlocked ? const Color(0xFFFFD166) : const Color(0xFFE9E0C9),
+          width: unlocked ? 2 : 1,
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 48,
+            height: 48,
+            child: SvgPicture.asset(
+              AchievementBadges.assetPath(achievement.iconKey),
+              width: 48,
+              height: 48,
+              colorFilter: unlocked
+                  ? null
+                  : ColorFilter.mode(
+                      const Color(0xFFB0AFA6),
+                      BlendMode.saturation,
+                    ),
+            ),
+          ),
+          if (!unlocked)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Icon(
+                Icons.lock_outline_rounded,
+                size: 16,
+                color: const Color(0xFFB0AFA6),
+              ),
+            ),
+          const SizedBox(height: 8),
+          Text(
+            achievement.name,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              color: unlocked ? const Color(0xFF2B2B2B) : const Color(0xFF9A8F77),
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            achievement.description,
+            style: const TextStyle(
+              fontSize: 11,
+              color: Color(0xFF6F6B60),
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// 徽章墙（用于个人页/TA的主页等）
