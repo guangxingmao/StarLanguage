@@ -7,7 +7,6 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../data/achievement_data.dart';
-import '../../utils/achievement_badges.dart';
 import '../../data/arena_data.dart';
 import '../../data/demo_data.dart' hide Achievement;
 import '../../data/growth_data.dart';
@@ -15,6 +14,24 @@ import '../../data/profile.dart';
 import '../../data/social_data.dart';
 import '../../widgets/starry_background.dart';
 import 'profile_card.dart';
+
+/// 成就墙使用的插图 SVG 列表（按成就 id 稳定分配）
+const List<String> _achievementIllustrationPaths = [
+  'assets/illustrations/ill_01.svg', 'assets/illustrations/ill_02.svg', 'assets/illustrations/ill_03.svg',
+  'assets/illustrations/ill_04.svg', 'assets/illustrations/ill_05.svg', 'assets/illustrations/ill_06.svg',
+  'assets/illustrations/ill_07.svg', 'assets/illustrations/ill_08.svg', 'assets/illustrations/ill_09.svg',
+  'assets/illustrations/ill_10.svg', 'assets/illustrations/ill_11.svg', 'assets/illustrations/ill_12.svg',
+  'assets/illustrations/ill_13.svg', 'assets/illustrations/ill_14.svg', 'assets/illustrations/ill_15.svg',
+  'assets/illustrations/ill_16.svg', 'assets/illustrations/ill_17.svg', 'assets/illustrations/ill_18.svg',
+  'assets/illustrations/ill_19.svg', 'assets/illustrations/ill_20.svg', 'assets/illustrations/ill_21.svg',
+  'assets/illustrations/ill_22.svg', 'assets/illustrations/ill_23.svg', 'assets/illustrations/ill_24.svg',
+  'assets/illustrations/ill_25.svg', 'assets/illustrations/ill_26.svg', 'assets/illustrations/ill_27.svg',
+  'assets/illustrations/ill_28.svg', 'assets/illustrations/ill_29.svg', 'assets/illustrations/ill_30.svg',
+];
+
+String _achievementIllustrationPath(Achievement a) {
+  return _achievementIllustrationPaths[a.id.hashCode.abs() % _achievementIllustrationPaths.length];
+}
 
 /// 个人主页（等级、基础信息、成就墙、个人圈、交友、设置均来自接口）
 class ProfilePage extends StatefulWidget {
@@ -737,7 +754,7 @@ class _AchievementSectionPreview extends StatelessWidget {
                           width: 36,
                           height: 36,
                           child: SvgPicture.asset(
-                            AchievementBadges.assetPath(a.iconKey),
+                            _achievementIllustrationPath(a),
                             width: 36,
                             height: 36,
                           ),
@@ -900,7 +917,7 @@ class _AchievementGridCard extends StatelessWidget {
             width: 48,
             height: 48,
             child: SvgPicture.asset(
-              AchievementBadges.assetPath(achievement.iconKey),
+              _achievementIllustrationPath(achievement),
               width: 48,
               height: 48,
               colorFilter: unlocked
